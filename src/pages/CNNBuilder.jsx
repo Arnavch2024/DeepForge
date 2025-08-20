@@ -79,6 +79,40 @@ const cnnSchemas = {
   },
 };
 
+const cnnPresets = [
+  {
+    id: 'lenet-ish',
+    name: 'LeNet-ish',
+    build: (id) => {
+      const n1 = { id: id(), position: { x: 50, y: 80 }, type: 'default', data: { label: 'Input Image', type: 'inputImage', params: { width: 32, height: 32, channels: 1 } } };
+      const n2 = { id: id(), position: { x: 280, y: 50 }, type: 'default', data: { label: 'Conv2D', type: 'conv2d', params: { filters: 6, kernel: '5x5', stride: '1x1', padding: 'same', activation: 'relu' } } };
+      const n3 = { id: id(), position: { x: 520, y: 50 }, type: 'default', data: { label: 'MaxPool', type: 'maxpool', params: { pool: '2x2', stride: '2x2' } } };
+      const n4 = { id: id(), position: { x: 760, y: 50 }, type: 'default', data: { label: 'Conv2D', type: 'conv2d', params: { filters: 16, kernel: '5x5', stride: '1x1', padding: 'same', activation: 'relu' } } };
+      const n5 = { id: id(), position: { x: 1000, y: 50 }, type: 'default', data: { label: 'MaxPool', type: 'maxpool', params: { pool: '2x2', stride: '2x2' } } };
+      const n6 = { id: id(), position: { x: 1240, y: 50 }, type: 'default', data: { label: 'Flatten', type: 'flatten', params: {} } };
+      const n7 = { id: id(), position: { x: 1480, y: 50 }, type: 'default', data: { label: 'Dense', type: 'dense', params: { units: 120, activation: 'relu' } } };
+      const n8 = { id: id(), position: { x: 1720, y: 50 }, type: 'default', data: { label: 'Dense', type: 'dense', params: { units: 84, activation: 'relu' } } };
+      const n9 = { id: id(), position: { x: 1960, y: 50 }, type: 'default', data: { label: 'Output', type: 'output', params: { classes: 10, activation: 'softmax' } } };
+      const e = (s, t) => ({ id: id(), source: s.id, target: t.id });
+      return { nodes: [n1, n2, n3, n4, n5, n6, n7, n8, n9], edges: [e(n1,n2), e(n2,n3), e(n3,n4), e(n4,n5), e(n5,n6), e(n6,n7), e(n7,n8), e(n8,n9)] };
+    }
+  },
+  {
+    id: 'simple-cnn',
+    name: 'Simple CNN',
+    build: (id) => {
+      const n1 = { id: id(), position: { x: 60, y: 120 }, type: 'default', data: { label: 'Input Image', type: 'inputImage', params: { width: 224, height: 224, channels: 3 } } };
+      const n2 = { id: id(), position: { x: 320, y: 120 }, type: 'default', data: { label: 'Conv2D', type: 'conv2d', params: { filters: 32, kernel: '3x3', stride: '1x1', padding: 'same', activation: 'relu' } } };
+      const n3 = { id: id(), position: { x: 560, y: 120 }, type: 'default', data: { label: 'MaxPool', type: 'maxpool', params: { pool: '2x2', stride: '2x2' } } };
+      const n4 = { id: id(), position: { x: 800, y: 120 }, type: 'default', data: { label: 'Flatten', type: 'flatten', params: {} } };
+      const n5 = { id: id(), position: { x: 1040, y: 120 }, type: 'default', data: { label: 'Dense', type: 'dense', params: { units: 128, activation: 'relu' } } };
+      const n6 = { id: id(), position: { x: 1280, y: 120 }, type: 'default', data: { label: 'Output', type: 'output', params: { classes: 10, activation: 'softmax' } } };
+      const e = (s, t) => ({ id: id(), source: s.id, target: t.id });
+      return { nodes: [n1, n2, n3, n4, n5, n6], edges: [e(n1,n2), e(n2,n3), e(n3,n4), e(n4,n5), e(n5,n6)] };
+    }
+  }
+];
+
 export default function CNNBuilder() {
   return (
     <BaseBuilder
@@ -87,6 +121,7 @@ export default function CNNBuilder() {
       storageKey="deepforge:builder:cnn:v1"
       schemas={cnnSchemas}
       builderType="cnn"
+      presets={cnnPresets}
     />
   );
 } 

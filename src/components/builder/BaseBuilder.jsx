@@ -28,7 +28,7 @@ function getDefaultParamsForType(schemas, type) {
   return defaults;
 }
 
-export default function BaseBuilder({ title, palette, storageKey, schemas, builderType }) {
+export default function BaseBuilder({ title, palette, storageKey, schemas, builderType, presets = [] }) {
   const loadFromStorage = useCallback(() => {
     try {
       const raw = localStorage.getItem(storageKey);
@@ -57,6 +57,28 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
   const [chatInput, setChatInput] = useState('');
 
   const [hoverCard, setHoverCard] = useState({ visible: false, x: 0, y: 0, type: null });
+
+  // Theme
+  const [theme, setTheme] = useState(() => localStorage.getItem('deepforge:theme') || 'dark');
+  const themeClass = theme === 'dark' ? 'theme-dark' : 'theme-light';
+  const toggleTheme = useCallback(() => {
+    setTheme((t) => {
+      const next = t === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('deepforge:theme', next);
+      return next;
+    });
+  }, []);
+
+  // Preset apply
+  const applyPresetById = useCallback((presetId) => {
+    const preset = presets.find((p) => p.id === presetId);
+    if (!preset) return;
+    const generated = preset.build(uuidv4);
+    if (!generated || !Array.isArray(generated.nodes)) return;
+    setNodes(generated.nodes);
+    setEdges(generated.edges || []);
+    saveToStorage(generated.nodes, generated.edges || []);
+  }, [presets, setNodes, setEdges, saveToStorage]);
 
   // Generated code state
   const [generatedCode, setGeneratedCode] = useState('');
@@ -90,10 +112,10 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
       type: 'default',
       position,
       data: { label: item.label, type: item.type, params },
-      style: defaultNodeStyle,
+      style: theme === 'dark' ? defaultNodeStyle : { ...defaultNodeStyle, background: '#ffffff', color: '#0f172a', border: '1px solid #e5e7eb' },
     };
     setNodes((nds) => nds.concat(newNode));
-  }, [reactFlowInstance, setNodes, schemas]);
+  }, [reactFlowInstance, setNodes, schemas, theme]);
 
   const onDragOver = useCallback((event) => {
     event.preventDefault();
@@ -175,10 +197,8 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
     }));
     const edgesPayload = edges.map((e) => ({ id: e.id, source: e.source, target: e.target }));
 
-    // Skip if no builderType
     if (!builderType) return;
 
-    // Abort previous in-flight request
     if (genAbortRef.current) {
       genAbortRef.current.abort();
     }
@@ -209,7 +229,7 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
       } finally {
         setIsGenerating(false);
       }
-    }, 400);
+    }, 300);
 
     return () => {
       clearTimeout(timer);
@@ -223,10 +243,26 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
   }, [generatedCode]);
 
   return (
-    <div className="builder-root">
+    <div className={`builder-root ${themeClass}`}>
       <div className="builder-header">
         <div className="builder-title">{title}</div>
-        <div className="builder-actions">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {presets.length > 0 && (
+            <select
+              className="builder-select"
+              defaultValue=""
+              onChange={(e) => {
+                const v = e.target.value; if (v) { applyPresetById(v); e.target.value = ''; }
+              }}
+              title="Load a preset"
+            >
+              <option value="" disabled>Presets…</option>
+              {presets.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          )}
+          <button className="builder-btn" onClick={toggleTheme}>{theme === 'dark' ? 'Light Theme' : 'Dark Theme'}</button>
           <button className="builder-btn" onClick={handleSave}>Save</button>
           <button className="builder-btn" onClick={handleClear}>Clear</button>
         </div>
