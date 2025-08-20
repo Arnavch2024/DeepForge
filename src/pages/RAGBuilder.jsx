@@ -74,6 +74,40 @@ const ragSchemas = {
   },
 };
 
+const ragPresets = [
+  {
+    id: 'basic-rag',
+    name: 'Basic RAG',
+    build: (id) => {
+      const a = { id: id(), position: { x: 60, y: 120 }, type: 'default', data: { label: 'Input Docs', type: 'inputDocs', params: { source: 'upload', path: '' } } };
+      const c = { id: id(), position: { x: 320, y: 120 }, type: 'default', data: { label: 'Chunker', type: 'chunk', params: { chunkSize: 800, overlap: 100 } } };
+      const b = { id: id(), position: { x: 580, y: 120 }, type: 'default', data: { label: 'Embedder', type: 'embed', params: { model: 'text-embedding-3-small', dim: 768 } } };
+      const d = { id: id(), position: { x: 840, y: 120 }, type: 'default', data: { label: 'Vector Store', type: 'vectorstore', params: { store: 'faiss', indexName: 'documents' } } };
+      const e = { id: id(), position: { x: 1100, y: 120 }, type: 'default', data: { label: 'Retriever', type: 'retriever', params: { topK: 5 } } };
+      const f = { id: id(), position: { x: 1360, y: 120 }, type: 'default', data: { label: 'LLM', type: 'llm', params: { model: 'gpt-4o-mini', temperature: 0.7 } } };
+      const g = { id: id(), position: { x: 1620, y: 120 }, type: 'default', data: { label: 'Output', type: 'output', params: {} } };
+      const E = (s, t) => ({ id: id(), source: s.id, target: t.id });
+      return { nodes: [a, c, b, d, e, f, g], edges: [E(a,c), E(c,b), E(b,d), E(d,e), E(e,f), E(f,g)] };
+    }
+  },
+  {
+    id: 'rag-with-reranker',
+    name: 'RAG + Reranker',
+    build: (id) => {
+      const a = { id: id(), position: { x: 60, y: 120 }, type: 'default', data: { label: 'Input Docs', type: 'inputDocs', params: { source: 'upload', path: '' } } };
+      const c = { id: id(), position: { x: 320, y: 120 }, type: 'default', data: { label: 'Chunker', type: 'chunk', params: { chunkSize: 800, overlap: 100 } } };
+      const b = { id: id(), position: { x: 580, y: 120 }, type: 'default', data: { label: 'Embedder', type: 'embed', params: { model: 'text-embedding-3-small', dim: 768 } } };
+      const d = { id: id(), position: { x: 840, y: 120 }, type: 'default', data: { label: 'Vector Store', type: 'vectorstore', params: { store: 'faiss', indexName: 'documents' } } };
+      const e = { id: id(), position: { x: 1100, y: 120 }, type: 'default', data: { label: 'Retriever', type: 'retriever', params: { topK: 8 } } };
+      const r = { id: id(), position: { x: 1360, y: 80 }, type: 'default', data: { label: 'Reranker', type: 'reranker', params: { model: 'bge-reranker' } } };
+      const f = { id: id(), position: { x: 1600, y: 120 }, type: 'default', data: { label: 'LLM', type: 'llm', params: { model: 'gpt-4o-mini', temperature: 0.5 } } };
+      const g = { id: id(), position: { x: 1860, y: 120 }, type: 'default', data: { label: 'Output', type: 'output', params: {} } };
+      const E = (s, t) => ({ id: id(), source: s.id, target: t.id });
+      return { nodes: [a, c, b, d, e, r, f, g], edges: [E(a,c), E(c,b), E(b,d), E(d,e), E(e,r), E(r,f), E(f,g)] };
+    }
+  }
+];
+
 export default function RAGBuilder() {
   return (
     <BaseBuilder
@@ -82,6 +116,7 @@ export default function RAGBuilder() {
       storageKey="deepforge:builder:rag:v1"
       schemas={ragSchemas}
       builderType="rag"
+      presets={ragPresets}
     />
   );
 } 

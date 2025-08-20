@@ -163,3 +163,26 @@
 .code-status { color: #94a3b8; font-size: 12px; }
 .code-error { color: #fca5a5; font-size: 12px; padding: 8px 10px; }
 .code-block { flex: 1; margin: 0; padding: 12px 14px; overflow: auto; background: #0b1220; color: #e2e8f0; border-top: 1px solid #1f2937; } 
+
+/* Theme overrides */
+.theme-light .builder-root { color: #0f172a; }
+.theme-light .builder-header { border-bottom-color: #e5e7eb; background: linear-gradient(180deg, #ffffff 0%, #fafafa 100%); }
+.theme-light .builder-sidebar { border-right-color: #e5e7eb; background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(250,250,250,0.95)); }
+.theme-light .builder-right { border-left-color: #e5e7eb; background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(250,250,250,0.95)); }
+.theme-light .panel-tabs { border-bottom-color: #e5e7eb; }
+.theme-light .tab { background: #f1f5f9; border-color: #e5e7eb; color: #0f172a; }
+.theme-light .code-toolbar { border-bottom-color: #e5e7eb; }
+.theme-light .code-block { background: #0f172a; color: #e2e8f0; border-top-color: #e5e7eb; }
+.theme-light .hover-card { background: #ffffff; color: #0f172a; border-color: #e5e7eb; box-shadow: 0 20px 30px -10px rgba(0,0,0,0.15); }
+.theme-light .hover-param-row { border-top-color: #e5e7eb; }
+
+/* Preset select */
+.builder-select {
+  appearance: none;
+  background: #0b1220 url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20" fill="%23e2e8f0"><path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.104l3.71-3.874a.75.75 0 1 1 1.08 1.04l-4.24 4.43a.75.75 0 0 1-1.08 0l-4.24-4.43a.75.75 0 0 1 .02-1.06z"/></svg>') no-repeat right 10px center;
+  color: #e2e8f0;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  padding: 10px 36px 10px 12px;
+}
+.theme-light .builder-select { background-color: #ffffff; color: #0f172a; border-color: #e5e7eb; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20" fill="%230f172a"><path d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.104l3.71-3.874a.75.75 0 1 1 1.08 1.04l-4.24 4.43a.75.75 0 0 1-1.08 0l-4.24-4.43a.75.75 0 0 1 .02-1.06z"/></svg>'); } 
