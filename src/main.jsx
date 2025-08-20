@@ -1,7 +1,11 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import App from './App.jsx'
-import './styles/global.css'  // Changed this line
+import BuilderHub from './pages/BuilderHub.jsx'
+import CNNBuilder from './pages/CNNBuilder.jsx'
+import RAGBuilder from './pages/RAGBuilder.jsx'
+import './styles/global.css'
 
 // Add this for the font
 const link = document.createElement('link');
@@ -11,6 +15,13 @@ document.head.appendChild(link);
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<App />} />
+        <Route path="/builder" element={<BuilderHub />} />
+        <Route path="/builder/cnn" element={<CNNBuilder />} />
+        <Route path="/builder/rag" element={<RAGBuilder />} />
+      </Routes>
+    </BrowserRouter>
   </React.StrictMode>,
 )
