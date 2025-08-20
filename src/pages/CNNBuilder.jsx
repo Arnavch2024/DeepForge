@@ -86,6 +86,7 @@ export default function CNNBuilder() {
       palette={cnnPalette}
       storageKey="deepforge:builder:cnn:v1"
       schemas={cnnSchemas}
+      builderType="cnn"
     />
   );
 } 

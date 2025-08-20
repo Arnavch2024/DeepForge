@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -28,7 +28,7 @@ function getDefaultParamsForType(schemas, type) {
   return defaults;
 }
 
-export default function BaseBuilder({ title, palette, storageKey, schemas }) {
+export default function BaseBuilder({ title, palette, storageKey, schemas, builderType }) {
   const loadFromStorage = useCallback(() => {
     try {
       const raw = localStorage.getItem(storageKey);
@@ -57,6 +57,12 @@ export default function BaseBuilder({ title, palette, storageKey, schemas }) {
   const [chatInput, setChatInput] = useState('');
 
   const [hoverCard, setHoverCard] = useState({ visible: false, x: 0, y: 0, type: null });
+
+  // Generated code state
+  const [generatedCode, setGeneratedCode] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [genError, setGenError] = useState(null);
+  const genAbortRef = useRef(null);
 
   const onConnect = useCallback((connection) => {
     setEdges((eds) => addEdge({ ...connection, animated: true }, eds));
@@ -150,7 +156,6 @@ export default function BaseBuilder({ title, palette, storageKey, schemas }) {
   }, []);
 
   const moveHover = useCallback((e) => {
-    // keep x fixed, follow Y for better feel
     setHoverCard((hc) => hc.visible ? { ...hc, y: e.clientY + window.scrollY - 20 } : hc);
   }, []);
 
@@ -159,6 +164,63 @@ export default function BaseBuilder({ title, palette, storageKey, schemas }) {
   }, []);
 
   const hoverSchema = hoverCard.visible && hoverCard.type ? schemas?.[hoverCard.type] : null;
+
+  // Auto-generate backend code when graph changes (debounced)
+  useEffect(() => {
+    const nodesPayload = nodes.map((n) => ({
+      id: n.id,
+      type: n.data?.type || 'default',
+      label: n.data?.label || '',
+      params: n.data?.params || {}
+    }));
+    const edgesPayload = edges.map((e) => ({ id: e.id, source: e.source, target: e.target }));
+
+    // Skip if no builderType
+    if (!builderType) return;
+
+    // Abort previous in-flight request
+    if (genAbortRef.current) {
+      genAbortRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    genAbortRef.current = controller;
+
+    const timer = setTimeout(async () => {
+      try {
+        setIsGenerating(true);
+        setGenError(null);
+        const res = await fetch('http://localhost:8000/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: builderType, graph: { nodes: nodesPayload, edges: edgesPayload } }),
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          const msg = await res.text();
+          throw new Error(msg || 'Failed to generate code');
+        }
+        const data = await res.json();
+        setGeneratedCode(data.code || '');
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setGenError(err.message || String(err));
+        }
+      } finally {
+        setIsGenerating(false);
+      }
+    }, 400);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [nodes, edges, builderType]);
+
+  const copyCode = useCallback(() => {
+    if (!generatedCode) return;
+    navigator.clipboard.writeText(generatedCode);
+  }, [generatedCode]);
 
   return (
     <div className="builder-root">
@@ -214,6 +276,10 @@ export default function BaseBuilder({ title, palette, storageKey, schemas }) {
               className={"tab" + (activeTab === 'chat' ? ' active' : '')}
               onClick={() => setActiveTab('chat')}
             >Chat</button>
+            <button
+              className={"tab" + (activeTab === 'code' ? ' active' : '')}
+              onClick={() => setActiveTab('code')}
+            >Code</button>
           </div>
           {activeTab === 'inspector' && (
             <div className="inspector">
@@ -275,6 +341,18 @@ export default function BaseBuilder({ title, palette, storageKey, schemas }) {
                 />
                 <button className="builder-btn" onClick={onSendChat}>Send</button>
               </div>
+            </div>
+          )}
+          {activeTab === 'code' && (
+            <div className="code-panel">
+              <div className="code-toolbar">
+                <div className="code-status">{isGenerating ? 'Generating…' : (genError ? 'Error' : 'Up to date')}</div>
+                <button className="builder-btn" onClick={copyCode}>Copy</button>
+              </div>
+              {genError && (
+                <div className="code-error">{genError}</div>
+              )}
+              <pre className="code-block"><code>{generatedCode || '# Code will appear here as you build'}</code></pre>
             </div>
           )}
         </aside>

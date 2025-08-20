@@ -81,6 +81,7 @@ export default function RAGBuilder() {
       palette={ragPalette}
       storageKey="deepforge:builder:rag:v1"
       schemas={ragSchemas}
+      builderType="rag"
     />
   );
 } 
