@@ -39,6 +39,22 @@ def _to_tuple_2(val: str, default: Tuple[int, int] = (1, 1)) -> Tuple[int, int]:
 		return default
 
 
+def _n_type(n: Dict[str, Any]) -> str:
+	data = n.get('data') or {}
+	return data.get('type') or n.get('type') or ''
+
+
+def _n_label(n: Dict[str, Any]) -> str:
+	data = n.get('data') or {}
+	return data.get('label') or n.get('label') or ''
+
+
+def _n_params(n: Dict[str, Any]) -> Dict[str, Any]:
+	data = n.get('data') or {}
+	params = data.get('params') or n.get('params') or {}
+	return params if isinstance(params, dict) else {}
+
+
 def _indegree(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -> Dict[str, int]:
 	deg = {n['id']: 0 for n in nodes}
 	for e in edges:
@@ -67,7 +83,7 @@ def topological_order(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) 
 	adj = _adjacency(edges)
 	while queue:
 		# Stable order by label/type for determinism
-		queue.sort(key=lambda nid: (node_by_id[nid].get('data', {}).get('type', ''), node_by_id[nid].get('data', {}).get('label', '')))
+		queue.sort(key=lambda nid: (_n_type(node_by_id[nid]), _n_label(node_by_id[nid])))
 		nid = queue.pop(0)
 		ordered.append(node_by_id[nid])
 		for nb in adj.get(nid, []):
@@ -94,8 +110,8 @@ def generate_cnn_code(graph):
 	# Defaults
 	in_w, in_h, in_c = 224, 224, 3
 	for n in ordered:
-		t = (n.get('data') or {}).get('type')
-		p = (n.get('data') or {}).get('params') or {}
+		t = _n_type(n)
+		p = _n_params(n)
 		if t == 'inputImage':
 			in_w = int(p.get('width') or in_w)
 			in_h = int(p.get('height') or in_h)
@@ -113,8 +129,8 @@ def generate_cnn_code(graph):
 	metrics = "['accuracy']"
 
 	for n in ordered:
-		type_ = (n.get('data') or {}).get('type')
-		params = (n.get('data') or {}).get('params') or {}
+		type_ = _n_type(n)
+		params = _n_params(n)
 		if type_ == 'inputImage':
 			continue
 		if type_ == 'conv2d':
@@ -169,8 +185,8 @@ def generate_rag_code(graph):
 	# Collect parameters
 	cfg: Dict[str, Dict[str, Any]] = {}
 	for n in ordered:
-		t = (n.get('data') or {}).get('type')
-		p = (n.get('data') or {}).get('params') or {}
+		t = _n_type(n)
+		p = _n_params(n)
 		if t:
 			cfg[t] = p
 
