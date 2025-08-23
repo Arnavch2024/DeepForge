@@ -163,6 +163,72 @@ const cnnPresets = [
       ];
       return { nodes, edges };
     }
+  },
+  {
+    id: 'vgg-style',
+    name: 'VGG-Style Deep CNN',
+    build: () => {
+      const nodes = [
+        { id: '1', type: 'default', position: { x: 100, y: 100 }, data: { label: 'Input Image', type: 'inputImage', params: { width: 224, height: 224, channels: 3 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '2', type: 'default', position: { x: 100, y: 200 }, data: { label: 'Conv2D', type: 'conv2d', params: { filters: 64, kernel: '3x3', stride: '1x1', padding: 'same', activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '3', type: 'default', position: { x: 100, y: 300 }, data: { label: 'Conv2D', type: 'conv2d', params: { filters: 64, kernel: '3x3', stride: '1x1', padding: 'same', activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '4', type: 'default', position: { x: 100, y: 400 }, data: { label: 'MaxPool', type: 'maxpool', params: { pool: '2x2', stride: '2x2' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '5', type: 'default', position: { x: 100, y: 500 }, data: { label: 'Conv2D', type: 'conv2d', params: { filters: 128, kernel: '3x3', stride: '1x1', padding: 'same', activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '6', type: 'default', position: { x: 100, y: 600 }, data: { label: 'Conv2D', type: 'conv2d', params: { filters: 128, kernel: '3x3', stride: '1x1', padding: 'same', activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '7', type: 'default', position: { x: 100, y: 700 }, data: { label: 'MaxPool', type: 'maxpool', params: { pool: '2x2', stride: '2x2' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '8', type: 'default', position: { x: 100, y: 800 }, data: { label: 'Conv2D', type: 'conv2d', params: { filters: 256, kernel: '3x3', stride: '1x1', padding: 'same', activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '9', type: 'default', position: { x: 100, y: 900 }, data: { label: 'Conv2D', type: 'conv2d', params: { filters: 256, kernel: '3x3', stride: '1x1', padding: 'same', activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '10', type: 'default', position: { x: 100, y: 1000 }, data: { label: 'MaxPool', type: 'maxpool', params: { pool: '2x2', stride: '2x2' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '11', type: 'default', position: { x: 100, y: 1100 }, data: { label: 'Flatten', type: 'flatten', params: {} }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '12', type: 'default', position: { x: 100, y: 1200 }, data: { label: 'Dense', type: 'dense', params: { units: 512, activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '13', type: 'default', position: { x: 100, y: 1300 }, data: { label: 'Dropout', type: 'dropout', params: { rate: 0.5 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '14', type: 'default', position: { x: 100, y: 1400 }, data: { label: 'Dense', type: 'dense', params: { units: 512, activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '15', type: 'default', position: { x: 100, y: 1500 }, data: { label: 'Dropout', type: 'dropout', params: { rate: 0.5 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '16', type: 'default', position: { x: 100, y: 1600 }, data: { label: 'Output', type: 'output', params: { classes: 1000, activation: 'softmax' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } }
+      ];
+      const edges = [
+        { id: 'e1-2', source: '1', target: '2', animated: true },
+        { id: 'e2-3', source: '2', target: '3', animated: true },
+        { id: 'e3-4', source: '3', target: '4', animated: true },
+        { id: 'e4-5', source: '4', target: '5', animated: true },
+        { id: 'e5-6', source: '5', target: '6', animated: true },
+        { id: 'e6-7', source: '6', target: '7', animated: true },
+        { id: 'e7-8', source: '7', target: '8', animated: true },
+        { id: 'e8-9', source: '8', target: '9', animated: true },
+        { id: 'e9-10', source: '9', target: '10', animated: true },
+        { id: 'e10-11', source: '10', target: '11', animated: true },
+        { id: 'e11-12', source: '11', target: '12', animated: true },
+        { id: 'e12-13', source: '12', target: '13', animated: true },
+        { id: 'e13-14', source: '13', target: '14', animated: true },
+        { id: 'e14-15', source: '14', target: '15', animated: true },
+        { id: 'e15-16', source: '15', target: '16', animated: true }
+      ];
+      return { nodes, edges };
+    }
+  },
+  {
+    id: 'mobilenet-transfer',
+    name: 'MobileNet Transfer Learning',
+    build: () => {
+      const nodes = [
+        { id: '1', type: 'default', position: { x: 100, y: 100 }, data: { label: 'Input Image', type: 'inputImage', params: { width: 224, height: 224, channels: 3 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '2', type: 'default', position: { x: 100, y: 200 }, data: { label: 'Pre-trained Model', type: 'pretrained', params: { model: 'mobilenet', trainable: 'false' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '3', type: 'default', position: { x: 100, y: 300 }, data: { label: 'Dense', type: 'dense', params: { units: 256, activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '4', type: 'default', position: { x: 100, y: 400 }, data: { label: 'BatchNorm', type: 'batchnorm', params: { momentum: 0.99, epsilon: 0.001 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '5', type: 'default', position: { x: 100, y: 500 }, data: { label: 'Dropout', type: 'dropout', params: { rate: 0.3 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '6', type: 'default', position: { x: 100, y: 600 }, data: { label: 'Dense', type: 'dense', params: { units: 128, activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '7', type: 'default', position: { x: 100, y: 700 }, data: { label: 'Output', type: 'output', params: { classes: 5, activation: 'softmax' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } }
+      ];
+      const edges = [
+        { id: 'e1-2', source: '1', target: '2', animated: true },
+        { id: 'e2-3', source: '2', target: '3', animated: true },
+        { id: 'e3-4', source: '3', target: '4', animated: true },
+        { id: 'e4-5', source: '4', target: '5', animated: true },
+        { id: 'e5-6', source: '5', target: '6', animated: true },
+        { id: 'e6-7', source: '6', target: '7', animated: true }
+      ];
+      return { nodes, edges };
+    }
   }
 ];
 
