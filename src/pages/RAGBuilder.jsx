@@ -125,6 +125,58 @@ const ragPresets = [
       ];
       return { nodes, edges };
     }
+  },
+  {
+    id: 'enterprise-rag',
+    name: 'Enterprise RAG',
+    build: () => {
+      const nodes = [
+        { id: '1', type: 'default', position: { x: 100, y: 100 }, data: { label: 'Input Docs', type: 'inputDocs', params: { source: 's3', format: 'pdf' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '2', type: 'default', position: { x: 100, y: 200 }, data: { label: 'Chunker', type: 'chunk', params: { size: 200, overlap: 20, strategy: 'semantic' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '3', type: 'default', position: { x: 100, y: 300 }, data: { label: 'Embedder', type: 'embed', params: { model: 'text-embedding-3-large', dimension: 3072 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '4', type: 'default', position: { x: 100, y: 400 }, data: { label: 'Vector Store', type: 'vectorstore', params: { type: 'weaviate', index: 'cosine' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '5', type: 'default', position: { x: 100, y: 500 }, data: { label: 'Retriever', type: 'retriever', params: { topK: 20, threshold: 0.5 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '6', type: 'default', position: { x: 100, y: 600 }, data: { label: 'Reranker', type: 'reranker', params: { model: 'cross-encoder/ms-marco-MiniLM-L-12-v2', topK: 8 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '7', type: 'default', position: { x: 100, y: 700 }, data: { label: 'LLM', type: 'llm', params: { model: 'gpt-4o', temperature: 0.0, maxTokens: 2048 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '8', type: 'default', position: { x: 100, y: 800 }, data: { label: 'Output', type: 'output', params: { format: 'json', streaming: 'true' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } }
+      ];
+      const edges = [
+        { id: 'e1-2', source: '1', target: '2', animated: true },
+        { id: 'e2-3', source: '2', target: '3', animated: true },
+        { id: 'e3-4', source: '3', target: '4', animated: true },
+        { id: 'e4-5', source: '4', target: '5', animated: true },
+        { id: 'e5-6', source: '5', target: '6', animated: true },
+        { id: 'e6-7', source: '6', target: '7', animated: true },
+        { id: 'e7-8', source: '7', target: '8', animated: true }
+      ];
+      return { nodes, edges };
+    }
+  },
+  {
+    id: 'multimodal-rag',
+    name: 'Multimodal RAG',
+    build: () => {
+      const nodes = [
+        { id: '1', type: 'default', position: { x: 100, y: 100 }, data: { label: 'Input Docs', type: 'inputDocs', params: { source: 'upload', format: 'mixed' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '2', type: 'default', position: { x: 100, y: 200 }, data: { label: 'Chunker', type: 'chunk', params: { size: 400, overlap: 40, strategy: 'hybrid' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '3', type: 'default', position: { x: 100, y: 300 }, data: { label: 'Embedder', type: 'embed', params: { model: 'text-embedding-3-large', dimension: 3072 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '4', type: 'default', position: { x: 100, y: 400 }, data: { label: 'Vector Store', type: 'vectorstore', params: { type: 'qdrant', index: 'cosine' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '5', type: 'default', position: { x: 100, y: 500 }, data: { label: 'Retriever', type: 'retriever', params: { topK: 15, threshold: 0.6 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '6', type: 'default', position: { x: 100, y: 600 }, data: { label: 'Reranker', type: 'reranker', params: { model: 'cross-encoder/ms-marco-MiniLM-L-12-v2', topK: 6 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '7', type: 'default', position: { x: 100, y: 700 }, data: { label: 'LLM', type: 'llm', params: { model: 'gpt-4o', temperature: 0.1, maxTokens: 1536 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '8', type: 'default', position: { x: 100, y: 800 }, data: { label: 'Output', type: 'output', params: { format: 'markdown', streaming: 'true' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } }
+      ];
+      const edges = [
+        { id: 'e1-2', source: '1', target: '2', animated: true },
+        { id: 'e2-3', source: '2', target: '3', animated: true },
+        { id: 'e3-4', source: '3', target: '4', animated: true },
+        { id: 'e4-5', source: '4', target: '5', animated: true },
+        { id: 'e5-6', source: '5', target: '6', animated: true },
+        { id: 'e6-7', source: '6', target: '7', animated: true },
+        { id: 'e7-8', source: '7', target: '8', animated: true }
+      ];
+      return { nodes, edges };
+    }
   }
 ];
 

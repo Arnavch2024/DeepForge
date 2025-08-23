@@ -131,7 +131,7 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
     if (!raw) return;
     const item = JSON.parse(raw);
     const bounds = reactFlowWrapperRef.current.getBoundingClientRect();
-    const position = reactFlowInstance.project({
+    const position = reactFlowInstance.screenToFlowPosition({
       x: event.clientX - bounds.left,
       y: event.clientY - bounds.top,
     });

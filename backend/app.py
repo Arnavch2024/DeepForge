@@ -719,7 +719,7 @@ def generate_rag_code(graph):
 def validate():
 	data = request.get_json(force=True)
 	graph = data.get('graph')
-	builder_type = data.get('type')  # 'cnn' or 'rag'
+	builder_type = data.get('builder_type') or data.get('type')  # 'cnn' or 'rag'
 	if not graph or builder_type not in ('cnn', 'rag'):
 		return jsonify({"error": "invalid request"}), 400
 	
@@ -734,7 +734,7 @@ def validate():
 def generate():
 	data = request.get_json(force=True)
 	graph = data.get('graph')
-	builder_type = data.get('type')  # 'cnn' or 'rag'
+	builder_type = data.get('builder_type') or data.get('type')  # 'cnn' or 'rag'
 	if not graph or builder_type not in ('cnn', 'rag'):
 		return jsonify({"error": "invalid request"}), 400
 	
