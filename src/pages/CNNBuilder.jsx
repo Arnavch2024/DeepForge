@@ -9,6 +9,7 @@ const cnnPalette = [
   { type: 'dropout', label: 'Dropout' },
   { type: 'flatten', label: 'Flatten' },
   { type: 'dense', label: 'Dense' },
+  { type: 'pretrained', label: 'Pre-trained Model' },
   { type: 'output', label: 'Output' },
 ];
 
@@ -77,7 +78,93 @@ const cnnSchemas = {
       { key: 'activation', label: 'Activation', type: 'select', options: ['softmax', 'sigmoid'], default: 'softmax', help: 'Softmax for multi-class; sigmoid for binary/multi-label.' },
     ]
   },
+  pretrained: {
+    title: 'Pre-trained Model',
+    description: 'Use a pre-trained neural network (trained on ImageNet) as a feature extractor. The base model is frozen, and you add custom layers on top. This technique, called transfer learning, works well with limited data and speeds up training.',
+    fields: [
+      { key: 'model', label: 'Model', type: 'select', options: ['resnet50', 'vgg16', 'mobilenet'], default: 'resnet50', help: 'ResNet50: Good balance of accuracy and speed. VGG16: Simple architecture, slower. MobileNet: Lightweight for mobile devices.' },
+      { key: 'trainable', label: 'Trainable', type: 'select', options: ['false', 'true'], default: 'false', help: 'false: Freeze base model (recommended). true: Fine-tune pre-trained weights (requires lower learning rate).' },
+    ]
+  },
 };
+
+// CNN Presets
+const cnnPresets = [
+  {
+    id: 'lenet',
+    name: 'LeNet-ish',
+    build: () => {
+      const nodes = [
+        { id: '1', type: 'default', position: { x: 100, y: 100 }, data: { label: 'Input Image', type: 'inputImage', params: { width: 32, height: 32, channels: 1 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '2', type: 'default', position: { x: 100, y: 200 }, data: { label: 'Conv2D', type: 'conv2d', params: { filters: 6, kernel: '5x5', stride: '1x1', padding: 'valid', activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '3', type: 'default', position: { x: 100, y: 300 }, data: { label: 'MaxPool', type: 'maxpool', params: { pool: '2x2', stride: '2x2' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '4', type: 'default', position: { x: 100, y: 400 }, data: { label: 'Conv2D', type: 'conv2d', params: { filters: 16, kernel: '5x5', stride: '1x1', padding: 'valid', activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '5', type: 'default', position: { x: 100, y: 500 }, data: { label: 'MaxPool', type: 'maxpool', params: { pool: '2x2', stride: '2x2' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '6', type: 'default', position: { x: 100, y: 600 }, data: { label: 'Flatten', type: 'flatten', params: {} }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '7', type: 'default', position: { x: 100, y: 700 }, data: { label: 'Dense', type: 'dense', params: { units: 120, activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '8', type: 'default', position: { x: 100, y: 800 }, data: { label: 'Dense', type: 'dense', params: { units: 84, activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '9', type: 'default', position: { x: 100, y: 900 }, data: { label: 'Output', type: 'output', params: { classes: 10, activation: 'softmax' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } }
+      ];
+      const edges = [
+        { id: 'e1-2', source: '1', target: '2', animated: true },
+        { id: 'e2-3', source: '2', target: '3', animated: true },
+        { id: 'e3-4', source: '3', target: '4', animated: true },
+        { id: 'e4-5', source: '4', target: '5', animated: true },
+        { id: 'e5-6', source: '5', target: '6', animated: true },
+        { id: 'e6-7', source: '6', target: '7', animated: true },
+        { id: 'e7-8', source: '7', target: '8', animated: true },
+        { id: 'e8-9', source: '8', target: '9', animated: true }
+      ];
+      return { nodes, edges };
+    }
+  },
+  {
+    id: 'simple',
+    name: 'Simple CNN',
+    build: () => {
+      const nodes = [
+        { id: '1', type: 'default', position: { x: 100, y: 100 }, data: { label: 'Input Image', type: 'inputImage', params: { width: 224, height: 224, channels: 3 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '2', type: 'default', position: { x: 100, y: 200 }, data: { label: 'Conv2D', type: 'conv2d', params: { filters: 32, kernel: '3x3', stride: '1x1', padding: 'same', activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '3', type: 'default', position: { x: 100, y: 300 }, data: { label: 'MaxPool', type: 'maxpool', params: { pool: '2x2', stride: '2x2' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '4', type: 'default', position: { x: 100, y: 400 }, data: { label: 'Conv2D', type: 'conv2d', params: { filters: 64, kernel: '3x3', stride: '1x1', padding: 'same', activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '5', type: 'default', position: { x: 100, y: 500 }, data: { label: 'MaxPool', type: 'maxpool', params: { pool: '2x2', stride: '2x2' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '6', type: 'default', position: { x: 100, y: 600 }, data: { label: 'Flatten', type: 'flatten', params: {} }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '7', type: 'default', position: { x: 100, y: 700 }, data: { label: 'Dense', type: 'dense', params: { units: 128, activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '8', type: 'default', position: { x: 100, y: 800 }, data: { label: 'Output', type: 'output', params: { classes: 10, activation: 'softmax' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } }
+      ];
+      const edges = [
+        { id: 'e1-2', source: '1', target: '2', animated: true },
+        { id: 'e2-3', source: '2', target: '3', animated: true },
+        { id: 'e3-4', source: '3', target: '4', animated: true },
+        { id: 'e4-5', source: '4', target: '5', animated: true },
+        { id: 'e5-6', source: '5', target: '6', animated: true },
+        { id: 'e6-7', source: '6', target: '7', animated: true },
+        { id: 'e7-8', source: '7', target: '8', animated: true }
+      ];
+      return { nodes, edges };
+    }
+  },
+  {
+    id: 'resnet-transfer',
+    name: 'ResNet Transfer Learning',
+    build: () => {
+      const nodes = [
+        { id: '1', type: 'default', position: { x: 100, y: 100 }, data: { label: 'Input Image', type: 'inputImage', params: { width: 224, height: 224, channels: 3 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '2', type: 'default', position: { x: 100, y: 200 }, data: { label: 'Pre-trained Model', type: 'pretrained', params: { model: 'resnet50', trainable: 'false' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '3', type: 'default', position: { x: 100, y: 300 }, data: { label: 'Dense', type: 'dense', params: { units: 128, activation: 'relu' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '4', type: 'default', position: { x: 100, y: 400 }, data: { label: 'Dropout', type: 'dropout', params: { rate: 0.5 } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } },
+        { id: '5', type: 'default', position: { x: 100, y: 500 }, data: { label: 'Output', type: 'output', params: { classes: 10, activation: 'softmax' } }, style: { border: '1px solid #1f2937', borderRadius: 10, padding: 10, background: '#0b1220', color: '#e2e8f0' } }
+      ];
+      const edges = [
+        { id: 'e1-2', source: '1', target: '2', animated: true },
+        { id: 'e2-3', source: '2', target: '3', animated: true },
+        { id: 'e3-4', source: '3', target: '4', animated: true },
+        { id: 'e4-5', source: '4', target: '5', animated: true }
+      ];
+      return { nodes, edges };
+    }
+  }
+];
 
 export default function CNNBuilder() {
   return (
@@ -86,6 +173,8 @@ export default function CNNBuilder() {
       palette={cnnPalette}
       storageKey="deepforge:builder:cnn:v1"
       schemas={cnnSchemas}
+      builderType="cnn"
+      presets={cnnPresets}
     />
   );
 } 

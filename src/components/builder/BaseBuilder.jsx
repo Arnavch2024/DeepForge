@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -28,7 +28,7 @@ function getDefaultParamsForType(schemas, type) {
   return defaults;
 }
 
-export default function BaseBuilder({ title, palette, storageKey, schemas }) {
+export default function BaseBuilder({ title, palette, storageKey, schemas, builderType, presets }) {
   const loadFromStorage = useCallback(() => {
     try {
       const raw = localStorage.getItem(storageKey);
@@ -57,6 +57,63 @@ export default function BaseBuilder({ title, palette, storageKey, schemas }) {
   const [chatInput, setChatInput] = useState('');
 
   const [hoverCard, setHoverCard] = useState({ visible: false, x: 0, y: 0, type: null });
+
+  // Code generation and validation states
+  const [generatedCode, setGeneratedCode] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [genError, setGenError] = useState(null);
+  const [validation, setValidation] = useState({ errors: [], warnings: [] });
+  const [isValidating, setIsValidating] = useState(false);
+
+  // Theme and presets
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('builder-theme');
+    return saved || 'dark';
+  });
+
+  // Debounced API calls for live code generation
+  useEffect(() => {
+    if (!builderType || (nodes.length === 0 && edges.length === 0)) {
+      setGeneratedCode('');
+      setValidation({ errors: [], warnings: [] });
+      return;
+    }
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        setIsGenerating(true);
+        setIsValidating(true);
+        setGenError(null);
+
+        const response = await fetch('http://localhost:8000/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            graph: { nodes, edges },
+            builder_type: builderType
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        setGeneratedCode(data.code || '');
+        setValidation(data.validation || { errors: [], warnings: [] });
+      } catch (error) {
+        console.error('Code generation error:', error);
+        setGenError(error.message);
+        setGeneratedCode('');
+        setValidation({ errors: [], warnings: [] });
+      } finally {
+        setIsGenerating(false);
+        setIsValidating(false);
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [nodes, edges, builderType]);
 
   const onConnect = useCallback((connection) => {
     setEdges((eds) => addEdge({ ...connection, animated: true }, eds));
@@ -158,13 +215,60 @@ export default function BaseBuilder({ title, palette, storageKey, schemas }) {
     setHoverCard({ visible: false, x: 0, y: 0, type: null });
   }, []);
 
+  // New functions for enhanced features
+  const copyCode = useCallback(() => {
+    if (generatedCode) {
+      navigator.clipboard.writeText(generatedCode);
+      // Could add toast notification here
+    }
+  }, [generatedCode]);
+
+  const toggleTheme = useCallback(() => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+    localStorage.setItem('builder-theme', newTheme);
+  }, [theme]);
+
+  const applyPresetById = useCallback((presetId) => {
+    const preset = presets?.find(p => p.id === presetId);
+    if (!preset?.build) return;
+    
+    try {
+      const { nodes: presetNodes, edges: presetEdges } = preset.build();
+      setNodes(presetNodes);
+      setEdges(presetEdges);
+      saveToStorage(presetNodes, presetEdges);
+    } catch (error) {
+      console.error('Failed to apply preset:', error);
+    }
+  }, [presets, setNodes, setEdges, saveToStorage]);
+
+  const onSelectionChange = useCallback(({ nodes: selectedNodes }) => {
+    setSelectedNodeId(selectedNodes?.[0]?.id ?? null);
+  }, []);
+
   const hoverSchema = hoverCard.visible && hoverCard.type ? schemas?.[hoverCard.type] : null;
 
   return (
-    <div className="builder-root">
+    <div className={`builder-root ${theme === 'light' ? 'theme-light' : ''}`}>
       <div className="builder-header">
         <div className="builder-title">{title}</div>
         <div className="builder-actions">
+          {presets && presets.length > 0 && (
+            <select 
+              className="builder-select" 
+              onChange={(e) => e.target.value && applyPresetById(e.target.value)}
+              value=""
+            >
+              <option value="">Load Preset...</option>
+              {presets.map(preset => (
+                <option key={preset.id} value={preset.id}>{preset.name}</option>
+              ))}
+            </select>
+          )}
+          <button className="builder-btn" onClick={toggleTheme}>
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
           <button className="builder-btn" onClick={handleSave}>Save</button>
           <button className="builder-btn" onClick={handleClear}>Clear</button>
         </div>
@@ -198,13 +302,36 @@ export default function BaseBuilder({ title, palette, storageKey, schemas }) {
             onInit={setReactFlowInstance}
             onDrop={onDrop}
             onDragOver={onDragOver}
-            onSelectionChange={handleSelectionChange}
+            onSelectionChange={onSelectionChange}
           >
             <Background />
             <Controls />
           </ReactFlow>
         </div>
         <aside className="builder-right">
+          {/* Validation Panel */}
+          {(validation.errors.length > 0 || validation.warnings.length > 0) && (
+            <div className="validation-panel">
+              <div className="validation-title">
+                {isValidating ? 'Validating...' : 'Validation Results'}
+              </div>
+              {validation.errors.length > 0 && (
+                <div className="validation-errors">
+                  {validation.errors.map((error, i) => (
+                    <div key={i} className="validation-item error">{error}</div>
+                  ))}
+                </div>
+              )}
+              {validation.warnings.length > 0 && (
+                <div className="validation-warnings">
+                  {validation.warnings.map((warning, i) => (
+                    <div key={i} className="validation-item warning">{warning}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="panel-tabs">
             <button
               className={"tab" + (activeTab === 'inspector' ? ' active' : '')}
@@ -214,6 +341,10 @@ export default function BaseBuilder({ title, palette, storageKey, schemas }) {
               className={"tab" + (activeTab === 'chat' ? ' active' : '')}
               onClick={() => setActiveTab('chat')}
             >Chat</button>
+            <button
+              className={"tab" + (activeTab === 'code' ? ' active' : '')}
+              onClick={() => setActiveTab('code')}
+            >Code</button>
           </div>
           {activeTab === 'inspector' && (
             <div className="inspector">
@@ -274,6 +405,32 @@ export default function BaseBuilder({ title, palette, storageKey, schemas }) {
                   onKeyDown={(e) => { if (e.key === 'Enter') onSendChat(); }}
                 />
                 <button className="builder-btn" onClick={onSendChat}>Send</button>
+              </div>
+            </div>
+          )}
+          {activeTab === 'code' && (
+            <div className="code-panel">
+              <div className="code-header">
+                <span className="code-title">
+                  {isGenerating ? 'Generating...' : 'Generated Code'}
+                </span>
+                {generatedCode && (
+                  <button className="builder-btn code-copy-btn" onClick={copyCode}>
+                    Copy
+                  </button>
+                )}
+              </div>
+              <div className="code-content">
+                {genError && (
+                  <div className="code-error">
+                    Error: {genError}
+                  </div>
+                )}
+                {!genError && (
+                  <pre className="code-pre">
+                    <code>{generatedCode || 'Add nodes to generate code...'}</code>
+                  </pre>
+                )}
               </div>
             </div>
           )}
