@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # DeepForge Backend
 
 Flask-based backend server for the DeepForge AI builder application.
@@ -52,3 +53,28 @@ The server will start on `http://localhost:8000`
 - Support for pre-trained models (ResNet50, VGG16, MobileNetV2)
 - Python code execution in isolated environment
 - CORS enabled for frontend integration
+=======
+# DeepForge Backend (Flask)
+
+## Setup
+1. Create and activate a virtual environment
+   - Windows (PowerShell):
+     - `python -m venv .venv`
+     - `.venv\Scripts\Activate.ps1`
+   - macOS/Linux:
+     - `python3 -m venv .venv`
+     - `source .venv/bin/activate`
+2. Install dependencies
+   - `pip install -r backend/requirements.txt`
+
+## Run
+- `python backend/app.py`
+- Server runs at `http://localhost:8000`
+- Health: `GET /health`
+- Generate code: `POST /generate` with JSON `{ type: 'cnn'|'rag', graph: { nodes:[], edges:[] } }`
+- Run code: `POST /run` with JSON `{ code: 'python_source_code' }`
+
+## Notes
+- Code generation is placeholder; wire your graph-to-code logic inside `generate_cnn_code` / `generate_rag_code`.
+- Execution runs in a subprocess with a timeout; expand with sandboxing as needed. 
+>>>>>>> 421040b4e5ad063860aa0486547f7cb38f529574

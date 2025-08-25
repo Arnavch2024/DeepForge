@@ -6,11 +6,7 @@ import tempfile
 import textwrap
 import json
 import os
-<<<<<<< HEAD
 from typing import Dict, List, Tuple, Any, Optional
-=======
-from typing import Dict, List, Tuple, Any
->>>>>>> 421040b4e5ad063860aa0486547f7cb38f529574
 
 app = Flask(__name__)
 CORS(app)
@@ -22,7 +18,6 @@ def health():
 
 
 # -------------------------------
-<<<<<<< HEAD
 # Validation and Error Handling
 # -------------------------------
 
@@ -402,8 +397,6 @@ def validate_graph_structure(builder_type: str, nodes: List[Dict[str, Any]], edg
 
 
 # -------------------------------
-=======
->>>>>>> 421040b4e5ad063860aa0486547f7cb38f529574
 # Utilities for graph processing
 # -------------------------------
 
@@ -507,7 +500,6 @@ def generate_cnn_code(graph):
 	lines: List[str] = []
 	lines.append('import tensorflow as tf')
 	lines.append('from tensorflow.keras import layers, models')
-<<<<<<< HEAD
 	lines.append('from tensorflow.keras.applications import ResNet50, VGG16, MobileNetV2')
 	lines.append('')
 	
@@ -579,11 +571,6 @@ def generate_cnn_code(graph):
 	# Standard sequential model generation
 	lines.append('model = models.Sequential()')
 	lines.append(f'model.add(layers.Input(shape=({in_h}, {in_w}, {in_c}))')
-=======
-	lines.append('')
-	lines.append('model = models.Sequential()')
-	lines.append(f'model.add(layers.Input(shape=({in_h}, {in_w}, {in_c})))')
->>>>>>> 421040b4e5ad063860aa0486547f7cb38f529574
 
 	loss = 'sparse_categorical_crossentropy'
 	metrics = "['accuracy']"
@@ -728,12 +715,11 @@ def generate_rag_code(graph):
 	return code
 
 
-<<<<<<< HEAD
 @app.post('/validate')
 def validate():
 	data = request.get_json(force=True)
 	graph = data.get('graph')
-	builder_type = data.get('builder_type') or data.get('type')  # 'cnn' or 'rag'
+	builder_type = data.get('type')  # 'cnn' or 'rag'
 	if not graph or builder_type not in ('cnn', 'rag'):
 		return jsonify({"error": "invalid request"}), 400
 	
@@ -744,14 +730,11 @@ def validate():
 	return jsonify(validation)
 
 
-=======
->>>>>>> 421040b4e5ad063860aa0486547f7cb38f529574
 @app.post('/generate')
 def generate():
 	data = request.get_json(force=True)
 	graph = data.get('graph')
-<<<<<<< HEAD
-	builder_type = data.get('builder_type') or data.get('type')  # 'cnn' or 'rag'
+	builder_type = data.get('type')  # 'cnn' or 'rag'
 	if not graph or builder_type not in ('cnn', 'rag'):
 		return jsonify({"error": "invalid request"}), 400
 	
@@ -761,24 +744,15 @@ def generate():
 	validation = validate_graph_structure(builder_type, nodes, edges)
 	
 	# Generate code
-=======
-	builder_type = data.get('type')  # 'cnn' or 'rag'
-	if not graph or builder_type not in ('cnn', 'rag'):
-		return jsonify({"error": "invalid request"}), 400
->>>>>>> 421040b4e5ad063860aa0486547f7cb38f529574
 	if builder_type == 'cnn':
 		code = generate_cnn_code(graph)
 	else:
 		code = generate_rag_code(graph)
-<<<<<<< HEAD
 	
 	return jsonify({
 		"code": code,
 		"validation": validation
 	})
-=======
-	return jsonify({"code": code})
->>>>>>> 421040b4e5ad063860aa0486547f7cb38f529574
 
 
 @app.post('/run')
