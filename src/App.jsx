@@ -12,6 +12,7 @@ function App() {
 
   return (
     <div className="App">
+      <div className="bg-grid" />
       <Navbar />
       <HeroSection />
       <FeatureCards />

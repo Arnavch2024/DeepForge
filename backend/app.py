@@ -7,9 +7,138 @@ import textwrap
 import json
 import os
 from typing import Dict, List, Tuple, Any, Optional
+import psycopg2
+import bcrypt
+from psycopg2.extras import RealDictCursor
+from dotenv import load_dotenv
+import jwt
+from datetime import datetime, timedelta, timezone
+from psycopg2 import errors
 
+load_dotenv()
 app = Flask(__name__)
 CORS(app)
+
+# -------------------------------
+# Database setup (Neon Postgres)
+# -------------------------------
+
+DB_URL = os.getenv('DATABASE_URL') or os.getenv('NEON_DB_URL') or 'postgresql://neondb_owner:npg_r3WRIEaLX0Ok@ep-holy-art-a1ny5k2k-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require'
+JWT_SECRET = os.getenv('JWT_SECRET') or 'change-this-secret'
+JWT_EXPIRES_MIN = int(os.getenv('JWT_EXPIRES_MIN') or '60')
+
+def get_db_connection():
+	conn = psycopg2.connect(DB_URL)
+	return conn
+
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS users (
+    user_id BIGSERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+    subscription_id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    price DECIMAL(10,2) NOT NULL DEFAULT 0,
+    features TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS user_subscriptions (
+    user_subscription_id SERIAL PRIMARY KEY,
+    user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
+    subscription_id INT REFERENCES subscriptions(subscription_id),
+    start_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    end_date TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS chats (
+    chat_id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    message_id BIGSERIAL PRIMARY KEY,
+    chat_id BIGINT REFERENCES chats(chat_id) ON DELETE CASCADE,
+    sender VARCHAR(20) NOT NULL,
+    message TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Flat chat messages table for simple history view (optional alongside chats/messages)
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL,
+    message TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+def init_db_schema() -> None:
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor() as cur:
+				cur.execute(SCHEMA_SQL)
+				conn.commit()
+	except Exception as e:
+		print(f"[DB] Schema init failed: {e}")
+		raise
+
+
+# -------------------------------
+# Auth helpers (JWT)
+# -------------------------------
+
+def create_access_token(user: Dict[str, any]) -> str:
+	payload = {
+		"sub": str(user["user_id"]),
+		"username": user.get("username"),
+		"email": user.get("email"),
+		"iat": datetime.now(timezone.utc),
+		"exp": datetime.now(timezone.utc) + timedelta(minutes=JWT_EXPIRES_MIN)
+	}
+	return jwt.encode(payload, JWT_SECRET, algorithm='HS256')
+
+
+def _get_bearer_token() -> Optional[str]:
+	auth = request.headers.get('Authorization') or ''
+	if auth.lower().startswith('bearer '):
+		return auth.split(' ', 1)[1].strip()
+	return None
+
+
+def get_current_user() -> Optional[Dict[str, any]]:
+	token = _get_bearer_token()
+	if not token:
+		return None
+	try:
+		payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+		user_id = int(payload.get('sub'))
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				cur.execute("SELECT user_id, username, email, created_at FROM users WHERE user_id = %s", (user_id,))
+				return cur.fetchone()
+	except Exception:
+		return None
+
+
+def auth_required(fn):
+	def wrapper(*args, **kwargs):
+		user = get_current_user()
+		if not user:
+			return jsonify({"error": "Unauthorized"}), 401
+		request.user = user
+		return fn(*args, **kwargs)
+	# Preserve function name for Flask
+	wrapper.__name__ = fn.__name__
+	return wrapper
 
 # Simple health check
 @app.get('/health')
@@ -730,6 +859,537 @@ def validate():
 	return jsonify(validation)
 
 
+# -------------------------------
+# Auth Endpoints (signup/login)
+# -------------------------------
+
+@app.post('/signup')
+def signup():
+	data = request.get_json(force=True)
+	username = (data.get('username') or '').strip()
+	email = (data.get('email') or '').strip().lower()
+	password = data.get('password') or ''
+	if not username or not email or not password:
+		return jsonify({"error": "username, email and password are required"}), 400
+
+	password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				cur.execute(
+					"""
+					INSERT INTO users (username, email, password_hash)
+					VALUES (%s, %s, %s)
+					RETURNING user_id, username, email, created_at
+					""",
+					(username, email, password_hash)
+				)
+				user = cur.fetchone()
+				conn.commit()
+		token = create_access_token(user)
+		return jsonify({"user": user, "token": token, "message": "User created successfully"}), 201
+	except errors.UniqueViolation:
+		return jsonify({"error": "username or email already exists"}), 409
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+@app.post('/login')
+def login():
+	data = request.get_json(force=True)
+	email = (data.get('email') or '').strip().lower()
+	password = data.get('password') or ''
+	if not email or not password:
+		return jsonify({"error": "email and password are required"}), 400
+
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				cur.execute("SELECT user_id, username, email, password_hash FROM users WHERE email = %s", (email,))
+				row = cur.fetchone()
+				if not row:
+					return jsonify({"error": "Invalid credentials"}), 401
+				stored_hash = (row.get('password_hash') or '').encode('utf-8')
+				if bcrypt.checkpw(password.encode('utf-8'), stored_hash):
+					user = {k: row[k] for k in ['user_id', 'username', 'email']}
+					token = create_access_token(user)
+					return jsonify({"message": "Login successful", "user": user, "token": token})
+				else:
+					return jsonify({"error": "Invalid credentials"}), 401
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+# -------------------------------
+# Subscriptions
+# -------------------------------
+
+@app.get('/subscriptions')
+def list_subscriptions():
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				cur.execute("SELECT subscription_id, name, price, features, created_at FROM subscriptions ORDER BY subscription_id")
+				rows = cur.fetchall()
+		return jsonify({"subscriptions": rows})
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+# -------------------------------
+# User Subscription (current user)
+# -------------------------------
+
+@app.get('/subscription')
+@auth_required
+def get_my_subscription():
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				cur.execute(
+					"""
+					SELECT us.user_subscription_id, us.is_active, us.start_date, us.end_date,
+					       s.subscription_id, s.name, s.price, s.features
+					FROM user_subscriptions us
+					JOIN subscriptions s ON s.subscription_id = us.subscription_id
+					WHERE us.user_id = %s AND us.is_active = TRUE
+					ORDER BY us.user_subscription_id DESC
+					LIMIT 1
+					""",
+					(request.user['user_id'],)
+				)
+				row = cur.fetchone()
+		return jsonify({"subscription": row})
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+@app.post('/subscribe')
+@auth_required
+def subscribe():
+	data = request.get_json(force=True)
+	plan = (data.get('plan') or '').strip().lower()
+	if plan not in ('free', 'pro', 'enterprise'):
+		return jsonify({"error": "invalid plan"}), 400
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				# find subscription id by name (case-insensitive)
+				cur.execute("SELECT subscription_id FROM subscriptions WHERE lower(name) = %s", (plan,))
+				sub = cur.fetchone()
+				if not sub:
+					# auto-create simple plan if not exists
+					cur.execute(
+						"INSERT INTO subscriptions(name, price, features) VALUES (%s, %s, %s) RETURNING subscription_id",
+						(plan.capitalize(), 0 if plan=='free' else (19.99 if plan=='pro' else 99.0), None)
+					)
+					sub = cur.fetchone()
+				# deactivate existing
+				cur.execute("UPDATE user_subscriptions SET is_active = FALSE, end_date = CURRENT_TIMESTAMP WHERE user_id = %s AND is_active = TRUE", (request.user['user_id'],))
+				# create new
+				cur.execute(
+					"""
+					INSERT INTO user_subscriptions (user_id, subscription_id)
+					VALUES (%s, %s)
+					RETURNING user_subscription_id, user_id, subscription_id, start_date, end_date, is_active
+					""",
+					(request.user['user_id'], sub['subscription_id'])
+				)
+				row = cur.fetchone()
+				conn.commit()
+		return jsonify({"user_subscription": row}), 201
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+@app.post('/cancel-subscription')
+@auth_required
+def cancel_subscription():
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				cur.execute("UPDATE user_subscriptions SET is_active = FALSE, end_date = CURRENT_TIMESTAMP WHERE user_id = %s AND is_active = TRUE RETURNING user_subscription_id", (request.user['user_id'],))
+				conn.commit()
+		return jsonify({"cancelled": True})
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+@app.post('/subscriptions')
+@auth_required
+def create_subscription():
+	data = request.get_json(force=True)
+	name = (data.get('name') or '').strip()
+	price = data.get('price', 0)
+	features = data.get('features')
+	if not name:
+		return jsonify({"error": "name is required"}), 400
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				cur.execute(
+					"""
+					INSERT INTO subscriptions (name, price, features)
+					VALUES (%s, %s, %s)
+					RETURNING subscription_id, name, price, features, created_at
+					""",
+					(name, price, features)
+				)
+				row = cur.fetchone()
+				conn.commit()
+		return jsonify({"subscription": row}), 201
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+@app.get('/subscriptions/<int:subscription_id>')
+def get_subscription(subscription_id: int):
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				cur.execute("SELECT subscription_id, name, price, features, created_at FROM subscriptions WHERE subscription_id = %s", (subscription_id,))
+				row = cur.fetchone()
+				if not row:
+					return jsonify({"error": "not found"}), 404
+		return jsonify({"subscription": row})
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+@app.put('/subscriptions/<int:subscription_id>')
+@auth_required
+def update_subscription(subscription_id: int):
+	data = request.get_json(force=True)
+	name = data.get('name')
+	price = data.get('price')
+	features = data.get('features')
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				cur.execute(
+					"""
+					UPDATE subscriptions
+					SET name = COALESCE(%s, name),
+					    price = COALESCE(%s, price),
+					    features = COALESCE(%s, features)
+					WHERE subscription_id = %s
+					RETURNING subscription_id, name, price, features, created_at
+					""",
+					(name, price, features, subscription_id)
+				)
+				row = cur.fetchone()
+				if not row:
+					return jsonify({"error": "not found"}), 404
+				conn.commit()
+		return jsonify({"subscription": row})
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+@app.delete('/subscriptions/<int:subscription_id>')
+@auth_required
+def delete_subscription(subscription_id: int):
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor() as cur:
+				cur.execute("DELETE FROM subscriptions WHERE subscription_id = %s", (subscription_id,))
+				if cur.rowcount == 0:
+					return jsonify({"error": "not found"}), 404
+				conn.commit()
+		return jsonify({"deleted": True})
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+@app.post('/users/<int:user_id>/subscriptions')
+@auth_required
+def assign_subscription(user_id: int):
+	data = request.get_json(force=True)
+	subscription_id = data.get('subscription_id')
+	end_date = data.get('end_date')
+	if not subscription_id:
+		return jsonify({"error": "subscription_id is required"}), 400
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				cur.execute(
+					"""
+					INSERT INTO user_subscriptions (user_id, subscription_id, end_date)
+					VALUES (%s, %s, %s)
+					RETURNING user_subscription_id, user_id, subscription_id, start_date, end_date, is_active
+					""",
+					(user_id, subscription_id, end_date)
+				)
+				row = cur.fetchone()
+				conn.commit()
+		return jsonify({"user_subscription": row}), 201
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+@app.get('/users/<int:user_id>/subscriptions')
+@auth_required
+def list_user_subscriptions(user_id: int):
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				cur.execute(
+					"""
+					SELECT us.user_subscription_id, us.user_id, us.subscription_id, us.start_date, us.end_date, us.is_active,
+					       s.name, s.price, s.features
+					FROM user_subscriptions us
+					JOIN subscriptions s ON s.subscription_id = us.subscription_id
+					WHERE us.user_id = %s
+					ORDER BY us.user_subscription_id DESC
+					""",
+					(user_id,)
+				)
+				rows = cur.fetchall()
+		return jsonify({"subscriptions": rows})
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+# -------------------------------
+# Chats and Messages
+# -------------------------------
+
+@app.post('/chats')
+@auth_required
+def create_chat():
+	data = request.get_json(force=True)
+	user_id = request.user['user_id']
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				cur.execute(
+					"""
+					INSERT INTO chats (user_id)
+					VALUES (%s)
+					RETURNING chat_id, user_id, created_at
+					""",
+					(user_id,)
+				)
+				row = cur.fetchone()
+				conn.commit()
+		return jsonify({"chat": row}), 201
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+@app.get('/users/<int:user_id>/chats')
+@auth_required
+def list_user_chats(user_id: int):
+	if request.user['user_id'] != user_id:
+		return jsonify({"error": "forbidden"}), 403
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				cur.execute("SELECT chat_id, user_id, created_at FROM chats WHERE user_id = %s ORDER BY chat_id DESC", (user_id,))
+				rows = cur.fetchall()
+		return jsonify({"chats": rows})
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+@app.post('/chats/<int:chat_id>/messages')
+@auth_required
+def add_message(chat_id: int):
+	data = request.get_json(force=True)
+	sender = (data.get('sender') or '').strip()
+	message = data.get('message') or ''
+	if sender not in ('user', 'ai'):
+		return jsonify({"error": "sender must be 'user' or 'ai'"}), 400
+	if not message:
+		return jsonify({"error": "message is required"}), 400
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				# Verify chat ownership
+				cur.execute("SELECT user_id FROM chats WHERE chat_id = %s", (chat_id,))
+				ch = cur.fetchone()
+				if not ch:
+					return jsonify({"error": "chat not found"}), 404
+				if ch['user_id'] != request.user['user_id']:
+					return jsonify({"error": "forbidden"}), 403
+				cur.execute(
+					"""
+					INSERT INTO messages (chat_id, sender, message)
+					VALUES (%s, %s, %s)
+					RETURNING message_id, chat_id, sender, message, created_at
+					""",
+					(chat_id, sender, message)
+				)
+				row = cur.fetchone()
+				conn.commit()
+		return jsonify({"message": row}), 201
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+@app.get('/chats/<int:chat_id>/messages')
+@auth_required
+def list_messages(chat_id: int):
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				# Verify chat ownership
+				cur.execute("SELECT user_id FROM chats WHERE chat_id = %s", (chat_id,))
+				ch = cur.fetchone()
+				if not ch:
+					return jsonify({"error": "chat not found"}), 404
+				if ch['user_id'] != request.user['user_id']:
+					return jsonify({"error": "forbidden"}), 403
+				cur.execute(
+					"SELECT message_id, chat_id, sender, message, created_at FROM messages WHERE chat_id = %s ORDER BY message_id",
+					(chat_id,)
+				)
+				rows = cur.fetchall()
+		return jsonify({"messages": rows})
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+# -------------------------------
+# Simple Chat History (flat)
+# -------------------------------
+
+@app.get('/chats')
+@auth_required
+def list_chats_flat():
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				cur.execute(
+					"SELECT id, role, message, created_at FROM chat_messages WHERE user_id = %s ORDER BY created_at ASC",
+					(request.user['user_id'],)
+				)
+				rows = cur.fetchall()
+		return jsonify({"chats": rows})
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+@app.post('/chats')
+@auth_required
+def add_chat_flat():
+	data = request.get_json(force=True)
+	role = (data.get('role') or '').strip()
+	message = (data.get('message') or '').strip()
+	if role not in ('user', 'assistant'):
+		return jsonify({"error": "role must be 'user' or 'assistant'"}), 400
+	if not message:
+		return jsonify({"error": "message is required"}), 400
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				cur.execute(
+					"""
+					INSERT INTO chat_messages (user_id, role, message)
+					VALUES (%s, %s, %s)
+					RETURNING id, role, message, created_at
+					""",
+					(request.user['user_id'], role, message)
+				)
+				row = cur.fetchone()
+				conn.commit()
+		return jsonify({"message": row}), 201
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+@app.delete('/chats')
+@auth_required
+def clear_chats_flat():
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor() as cur:
+				cur.execute("DELETE FROM chat_messages WHERE user_id = %s", (request.user['user_id'],))
+				conn.commit()
+		return jsonify({"cleared": True})
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+# -------------------------------
+# Chat mode endpoints (placeholders)
+# -------------------------------
+
+@app.post('/chat-cnn')
+@auth_required
+def chat_cnn():
+	# Placeholder for CNN-based chat processing
+	return jsonify({"ok": True})
+
+
+@app.post('/chat-rag')
+@auth_required
+def chat_rag():
+	# Placeholder for RAG-based chat processing
+	return jsonify({"ok": True})
+
+
+# -------------------------------
+# Users CRUD (self only)
+# -------------------------------
+
+@app.get('/users/me')
+@auth_required
+def get_me():
+	return jsonify({"user": request.user})
+
+
+@app.put('/users/me')
+@auth_required
+def update_me():
+	data = request.get_json(force=True)
+	username = (data.get('username') or '').strip() or None
+	password = data.get('password') or None
+	new_hash = None
+	if password:
+		new_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor(cursor_factory=RealDictCursor) as cur:
+				cur.execute(
+					"""
+					UPDATE users
+					SET username = COALESCE(%s, username),
+					    password_hash = COALESCE(%s, password_hash)
+					WHERE user_id = %s
+					RETURNING user_id, username, email, created_at
+					""",
+					(username, new_hash, request.user['user_id'])
+				)
+				row = cur.fetchone()
+				conn.commit()
+		return jsonify({"user": row})
+	except errors.UniqueViolation:
+		return jsonify({"error": "username already exists"}), 409
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+# Backwards-compatibility alias
+@app.post('/update-profile')
+@auth_required
+def update_profile_alias():
+	return update_me()
+
+
+@app.delete('/users/me')
+@auth_required
+def delete_me():
+	try:
+		with get_db_connection() as conn:
+			with conn.cursor() as cur:
+				cur.execute("DELETE FROM users WHERE user_id = %s", (request.user['user_id'],))
+				conn.commit()
+		return jsonify({"deleted": True})
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
 @app.post('/generate')
 def generate():
 	data = request.get_json(force=True)
@@ -781,4 +1441,9 @@ def run_code():
 
 
 if __name__ == '__main__':
-	app.run(host='0.0.0.0', port=8000, debug=True) 
+	# Initialize DB schema on startup
+	try:
+		init_db_schema()
+	except Exception:
+		pass
+	app.run(host='0.0.0.0', port=8000, debug=True)
