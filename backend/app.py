@@ -1395,66 +1395,170 @@ def delete_me():
 
 
 
+def format_code_with_black(code_str: str) -> str:
+    """Format Python code using black if available."""
+    try:
+        import black
+        from black import FileMode
+        return black.format_str(code_str, mode=FileMode(line_length=88))
+    except ImportError:
+        return code_str
+
 @app.post('/generate')
 def generate():
-	data = request.get_json(force=True)
-	graph = data.get('graph')
-
-	builder_type = data.get('builder_type') or data.get('type')  # 'cnn' or 'rag'
-	if not graph or builder_type not in ('cnn', 'rag'):
-		return jsonify({"error": "invalid request"}), 400
-	
-	# Validate graph structure
-	nodes = graph.get('nodes') or []
-	edges = graph.get('edges') or []
-	validation = validate_graph_structure(builder_type, nodes, edges)
-	
-	# Generate code
-
-	builder_type = data.get('type')  # 'cnn' or 'rag'
-	if not graph or builder_type not in ('cnn', 'rag'):
-		return jsonify({"error": "invalid request"}), 400
-
-	if builder_type == 'cnn':
-		code = generate_cnn_code(graph)
-	else:
-		code = generate_rag_code(graph)
-	
-	return jsonify({
-		"code": code,
-		"validation": validation
-	})
+    try:
+        data = request.get_json(force=True)
+        graph = data.get('graph')
+        builder_type = data.get('builder_type') or data.get('type')  # 'cnn' or 'rag'
+        
+        # Input validation
+        if not graph or builder_type not in ('cnn', 'rag'):
+            return jsonify({
+                "success": False,
+                "error": "Invalid request: Missing or invalid graph/builder_type",
+                "validation": {"errors": ["Missing or invalid graph/builder_type"], "warnings": []}
+            }), 400
+        
+        nodes = graph.get('nodes', [])
+        edges = graph.get('edges', [])
+        
+        # Validate graph structure
+        validation = validate_graph_structure(builder_type, nodes, edges)
+        
+        # Return early if there are validation errors
+        if validation.get('errors'):
+            return jsonify({
+                "success": False,
+                "error": "Validation failed",
+                "validation": validation,
+                "code": ""
+            }), 400
+        
+        # Generate code based on builder type
+        try:
+            code = generate_cnn_code(graph) if builder_type == 'cnn' else generate_rag_code(graph)
+            
+            # Format the generated code
+            try:
+                code = format_code_with_black(code)
+            except Exception as format_err:
+                print(f"Code formatting warning: {str(format_err)}")
+                # Continue with unformatted code if formatting fails
+            
+            return jsonify({
+                "success": True,
+                "code": code,
+                "language": "python",
+                "validation": validation
+            })
+            
+        except Exception as gen_error:
+            error_msg = str(gen_error)
+            print(f"Code generation error: {error_msg}\n{traceback.format_exc()}")
+            return jsonify({
+                "success": False,
+                "error": f"Code generation failed: {error_msg}",
+                "validation": {"errors": [f"Generation error: {error_msg}"], "warnings": []},
+                "code": ""
+            }), 400
+            
+    except Exception as e:
+        error_msg = str(e)
+        print(f"Unexpected error in /generate: {error_msg}\n{traceback.format_exc()}")
+        return jsonify({
+            "success": False,
+            "error": f"Internal server error: {error_msg}",
+            "validation": {"errors": ["An unexpected error occurred during code generation"], "warnings": []},
+            "code": ""
+        }), 500
 
 
 @app.post('/run')
 def run_code():
-	data = request.get_json(force=True)
-	code = data.get('code')
-	if not code:
-		return jsonify({"error": "missing code"}), 400
+    try:
+        data = request.get_json(force=True)
+        code = data.get('code')
+        
+        if not code or not isinstance(code, str):
+            return jsonify({
+                "success": False,
+                "error": "Missing or invalid code parameter"
+            }), 400
 
-	# Write code to a temp file and execute in a subprocess (python)
-	with tempfile.TemporaryDirectory() as tmpdir:
-		file_path = os.path.join(tmpdir, 'user_code.py')
-		with open(file_path, 'w', encoding='utf-8') as f:
-			f.write(textwrap.dedent(code))
-		try:
-			proc = subprocess.run([sys.executable, file_path], capture_output=True, text=True, timeout=120)
-			return jsonify({
-				"returncode": proc.returncode,
-				"stdout": proc.stdout,
-				"stderr": proc.stderr,
-			})
-		except subprocess.TimeoutExpired:
-			return jsonify({"error": "execution timeout"}), 408
-		except Exception as e:
-			return jsonify({"error": str(e)}), 500
+        # Basic code validation
+        if len(code.strip()) == 0:
+            return jsonify({
+                "success": False,
+                "error": "Empty code provided"
+            }), 400
+
+        # Security: Check for potentially dangerous operations
+        dangerous_patterns = [
+            'import os', 'import sys', 'import subprocess',
+            'os.system', 'subprocess.run', 'exec(', 'eval(',
+            'open(', 'file(', 'import socket', 'import ctypes'
+        ]
+        
+        if any(pattern in code for pattern in dangerous_patterns):
+            return jsonify({
+                "success": False,
+                "error": "Code contains restricted operations"
+            }), 403
+
+        # Write code to a temp file and execute in a subprocess
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file_path = os.path.join(tmpdir, 'user_code.py')
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(textwrap.dedent(code))
+                
+                # Execute with timeout
+                proc = subprocess.run(
+                    [sys.executable, file_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,  # Shorter timeout for security
+                    cwd=tmpdir,  # Run in temp directory
+                    env={"PYTHONPATH": "."}  # Limit Python path
+                )
+                
+                return jsonify({
+                    "success": True,
+                    "returncode": proc.returncode,
+                    "stdout": proc.stdout,
+                    "stderr": proc.stderr,
+                    "timed_out": False
+                })
+                
+            except subprocess.TimeoutExpired:
+                return jsonify({
+                    "success": False,
+                    "error": "Execution timed out (30s limit)",
+                    "timed_out": True
+                }), 408
+                
+            except Exception as e:
+                return jsonify({
+                    "success": False,
+                    "error": f"Execution failed: {str(e)}",
+                    "timed_out": False
+                }), 400
+                
+    except Exception as e:
+        error_msg = str(e)
+        print(f"Unexpected error in /run: {error_msg}\n{traceback.format_exc()}")
+        return jsonify({
+            "success": False,
+            "error": "Internal server error during code execution"
+        }), 500
 
 
 if __name__ == '__main__':
-	# Initialize DB schema on startup
-	try:
-		init_db_schema()
-	except Exception:
-		pass
-	app.run(host='0.0.0.0', port=8000, debug=True)
+    # Initialize DB schema on startup
+    try:
+        init_db_schema()
+    except Exception as e:
+        print(f"Warning: Could not initialize database schema: {e}")
+    
+    # Run the Flask app
+    app.run(host='0.0.0.0', port=8000, debug=True)

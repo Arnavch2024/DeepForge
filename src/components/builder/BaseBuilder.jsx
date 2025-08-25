@@ -4,10 +4,15 @@ import ReactFlow, {
   Controls,
   addEdge,
   useEdgesState,
-  useNodesState
+  useNodesState,
+  getIncomers,
+  getOutgoers
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { v4 as uuidv4 } from 'uuid';
+import CodeDisplay from './CodeDisplay';
+import { FiAlertTriangle, FiCheckCircle, FiInfo } from 'react-icons/fi';
+import { TbCopy, TbCopyCheck } from 'react-icons/tb';
 import '../../styles/builder.css';
 
 const defaultNodeStyle = {
@@ -64,6 +69,8 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
   const [genError, setGenError] = useState(null);
   const [validation, setValidation] = useState({ errors: [], warnings: [] });
   const [isValidating, setIsValidating] = useState(false);
+  const [codeLanguage, setCodeLanguage] = useState('python');
+  const [showRawCode, setShowRawCode] = useState(false);
 
   // Theme and presets
   const [theme, setTheme] = useState(() => {
@@ -85,6 +92,25 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
         setIsValidating(true);
         setGenError(null);
 
+        // First validate the graph
+        const validationResponse = await fetch('http://localhost:8000/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            builder_type: builderType,
+            nodes,
+            edges
+          })
+        });
+
+        const validationData = await validationResponse.json();
+        setValidation(validationData);
+
+        if (validationData.errors && validationData.errors.length > 0) {
+          throw new Error('Validation failed');
+        }
+
+        // If validation passes, generate code
         const response = await fetch('http://localhost:8000/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -100,7 +126,7 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
 
         const data = await response.json();
         setGeneratedCode(data.code || '');
-        setValidation(data.validation || { errors: [], warnings: [] });
+        setCodeLanguage(data.language || 'python');
       } catch (error) {
         console.error('Code generation error:', error);
         setGenError(error.message);
@@ -248,6 +274,85 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
   }, []);
 
   const hoverSchema = hoverCard.visible && hoverCard.type ? schemas?.[hoverCard.type] : null;
+
+  const renderCodePanel = () => (
+    <div className="flex flex-col h-full">
+      <div className="flex justify-between items-center p-4 border-b border-gray-700">
+        <h3 className="text-lg font-medium">Generated Code</h3>
+        <div className="flex space-x-2">
+          <button
+            onClick={() => setShowRawCode(!showRawCode)}
+            className="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors"
+          >
+            {showRawCode ? 'Show Formatted' : 'Show Raw'}
+          </button>
+        </div>
+      </div>
+      
+      <div className="flex-1 overflow-auto">
+        {showRawCode ? (
+          <div className="p-4">
+            <pre className="bg-gray-900 p-4 rounded-md overflow-x-auto">
+              <code className="text-sm">
+                {generatedCode || '// Your generated code will appear here'}
+              </code>
+            </pre>
+          </div>
+        ) : (
+          <CodeDisplay 
+            code={generatedCode} 
+            language={codeLanguage}
+            className="h-full"
+          />
+        )}
+      </div>
+      
+      {(validation.errors.length > 0 || validation.warnings.length > 0) && (
+        <div className="p-4 border-t border-gray-700">
+          {validation.errors.length > 0 && (
+            <div className="mb-4">
+              <h4 className="text-red-400 font-medium mb-2 flex items-center">
+                <FiAlertTriangle className="mr-2" />
+                Validation Errors
+              </h4>
+              <ul className="text-sm text-gray-300 space-y-1">
+                {validation.errors.map((err, i) => (
+                  <li key={i} className="flex items-start">
+                    <span className="text-red-400 mr-2">•</span>
+                    <span>{err}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {validation.warnings.length > 0 && (
+            <div>
+              <h4 className="text-yellow-400 font-medium mb-2 flex items-center">
+                <FiInfo className="mr-2" />
+                Warnings
+              </h4>
+              <ul className="text-sm text-gray-400 space-y-1">
+                {validation.warnings.map((warn, i) => (
+                  <li key={i} className="flex items-start">
+                    <span className="text-yellow-400 mr-2">•</span>
+                    <span>{warn}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+      
+      {genError && (
+        <div className="p-4 bg-red-900/30 border-t border-red-800 text-red-300 text-sm">
+          <div className="font-medium mb-1">Code Generation Error</div>
+          <div>{genError}</div>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className={`builder-root ${theme === 'light' ? 'theme-light' : ''}`}>
@@ -409,30 +514,7 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
             </div>
           )}
           {activeTab === 'code' && (
-            <div className="code-panel">
-              <div className="code-header">
-                <span className="code-title">
-                  {isGenerating ? 'Generating...' : 'Generated Code'}
-                </span>
-                {generatedCode && (
-                  <button className="builder-btn code-copy-btn" onClick={copyCode}>
-                    Copy
-                  </button>
-                )}
-              </div>
-              <div className="code-content">
-                {genError && (
-                  <div className="code-error">
-                    Error: {genError}
-                  </div>
-                )}
-                {!genError && (
-                  <pre className="code-pre">
-                    <code>{generatedCode || 'Add nodes to generate code...'}</code>
-                  </pre>
-                )}
-              </div>
-            </div>
+            renderCodePanel()
           )}
         </aside>
       </div>
