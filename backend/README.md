@@ -31,6 +31,39 @@ The server will start on `http://localhost:8000`
 ### Health Check
 - **GET** `/health` - Returns server status
 
+### Auth
+- **POST** `/signup` – Body: `{username, email, password}` → creates user
+- **POST** `/login` – Body: `{email, password}` → verifies user
+  - Returns: `{ user, token }` where `token` is a Bearer JWT
+
+Use JWT in requests:
+
+```
+Authorization: Bearer <token>
+```
+
+### Subscriptions
+- **GET** `/subscriptions` – List subscription plans
+- **POST** `/subscriptions` – Body: `{name, price, features}` → create plan (auth)
+- **GET** `/subscriptions/{subscription_id}` – Get one plan
+- **PUT** `/subscriptions/{subscription_id}` – Update plan (auth)
+- **DELETE** `/subscriptions/{subscription_id}` – Delete plan (auth)
+- **POST** `/users/{user_id}/subscriptions` – Body: `{subscription_id, end_date?}` → assign plan
+- **GET** `/users/{user_id}/subscriptions` – List assigned plans for user (auth)
+
+### Chats
+- **POST** `/chats` – Create chat for current user (auth)
+- **GET** `/users/{user_id}/chats` – List user's chats (auth, self only)
+
+### Messages
+- **POST** `/chats/{chat_id}/messages` – Body: `{sender: 'user'|'ai', message}` (auth, owned chat)
+- **GET** `/chats/{chat_id}/messages` – List chat messages (auth, owned chat)
+
+### Users
+- **GET** `/users/me` – Get current user (auth)
+- **PUT** `/users/me` – Update username and/or password (auth)
+- **DELETE** `/users/me` – Delete current user (auth)
+
 ### Code Generation
 - **POST** `/generate` - Generate Python code from graph data
   - Body: `{"graph": {...}, "builder_type": "cnn|rag"}`
@@ -45,6 +78,16 @@ The server will start on `http://localhost:8000`
 - **POST** `/validate` - Validate graph structure
   - Body: `{"graph": {...}, "builder_type": "cnn|rag"}`
   - Returns: `{"validation": {"errors": [...], "warnings": [...]}}`
+
+## Environment
+
+Set Neon connection string via `.env` at `backend/.env`:
+
+```
+DATABASE_URL=postgresql://user:pass@host/db?sslmode=require
+JWT_SECRET=change-this-secret
+JWT_EXPIRES_MIN=60
+```
 
 ## Features
 
