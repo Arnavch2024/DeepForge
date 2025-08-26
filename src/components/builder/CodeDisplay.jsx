@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'prism-react-renderer';
 import { FaCopy, FaCheck } from 'react-icons/fa';
 
