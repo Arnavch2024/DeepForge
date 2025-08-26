@@ -1,12 +1,10 @@
-import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import React, { useCallback, useRef, useState, useEffect } from 'react';
 import ReactFlow, {
   Background,
   Controls,
   addEdge,
   useEdgesState,
   useNodesState,
-  getIncomers,
-  getOutgoers
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { v4 as uuidv4 } from 'uuid';
@@ -15,38 +13,21 @@ import { FiAlertTriangle, FiCheckCircle, FiInfo } from 'react-icons/fi';
 import { TbCopy, TbCopyCheck } from 'react-icons/tb';
 import '../../styles/builder.css';
 
-const defaultNodeStyle = {
-  border: '1px solid #1f2937',
-  borderRadius: 10,
-  padding: 10,
-  background: '#0b1220',
-  color: '#e2e8f0'
-};
 
-function getDefaultParamsForType(schemas, type) {
-  const schema = schemas?.[type];
-  if (!schema?.fields) return {};
-  const defaults = {};
-  schema.fields.forEach((f) => {
-    defaults[f.key] = f.default ?? (f.type === 'number' ? 0 : '');
-  });
-  return defaults;
-}
-
-export default function BaseBuilder({ title, palette, storageKey, schemas, builderType, presets }) {
+export default function BaseBuilder({ title, palette, storageKey, schemas }) {
   // State management
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNode, setSelectedNode] = useState(null);
   const [activeTab, setActiveTab] = useState('inspector');
   const [generatedCode, setGeneratedCode] = useState('');
-  const [codeLanguage, setCodeLanguage] = useState('python');
+  const [codeLanguage] = useState('python');
   const [showRawCode, setShowRawCode] = useState(false);
   const [validation, setValidation] = useState({ errors: [], warnings: [] });
   const [isValidating, setIsValidating] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState([]);
-  const [hoverCard, setHoverCard] = useState({ visible: false, x: 0, y: 0, type: null });
+  const [hoverCard] = useState({ visible: false, x: 0, y: 0, type: null });
   const [genError, setGenError] = useState(null);
   
   const reactFlowWrapper = useRef(null);
@@ -116,7 +97,7 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
       console.error('Error generating code:', error);
       setGenError(error.message);
     }
-  }, [nodes, edges]);
+  }, []);
 
   // Validate graph
   const validateGraph = useCallback(() => {
@@ -134,7 +115,7 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
       setValidation({ errors, warnings });
       setIsValidating(false);
     }, 500);
-  }, [nodes, edges]);
+  }, [nodes]);
 
   // Effect to save changes to localStorage
   useEffect(() => {

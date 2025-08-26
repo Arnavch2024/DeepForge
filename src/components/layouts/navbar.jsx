@@ -16,7 +16,9 @@ const Navbar = () => {
         if (!getAuthToken()) return;
         const res = await api.me();
         setMe(res.user || res);
-      } catch {}
+      } catch (error) {
+        // Silently ignore error, probably because user is not logged in
+      }
     })();
   }, []);
 

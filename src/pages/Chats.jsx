@@ -38,7 +38,7 @@ export default function Chats() {
 			// Mock assistant echo; in real app call LLM then persist assistant reply
 			// Call backend per mode (mocked here by storing assistant echo)
 			const endpoint = mode === 'rag' ? '/chat-rag' : '/chat-cnn';
-			try { await fetch((import.meta.env.VITE_API_BASE||'http://localhost:8000')+endpoint, { method:'POST', headers:{'Content-Type':'application/json', ...(localStorage.getItem('df_token')?{Authorization:`Bearer ${localStorage.getItem('df_token')}`}:{})}, body: JSON.stringify({ prompt: userMsg.message }) }); } catch {}
+			try { await fetch((import.meta.env.VITE_API_BASE||'http://localhost:8000')+endpoint, { method:'POST', headers:{'Content-Type':'application/json', ...(localStorage.getItem('df_token')?{Authorization:`Bearer ${localStorage.getItem('df_token')}`}:{})}, body: JSON.stringify({ prompt: userMsg.message }) }); } catch (e) { /* Mock call, can ignore */ }
 			const assistant = await api.postChat({ role: 'assistant', message: `[${mode.toUpperCase()}] You said: ${userMsg.message}` });
 			setMessages(prev => [...prev, assistant.message]);
 		} catch (e) {
