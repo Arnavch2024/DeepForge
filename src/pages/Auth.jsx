@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, setAuthToken } from '../api/client.js';
+import BackButton from '../components/BackButton.jsx';
 
 export default function Auth() {
 	const navigate = useNavigate();
@@ -33,6 +34,7 @@ export default function Auth() {
 
 	return (
 		<div className="builder-hub" style={{ maxWidth: 480, margin: '80px auto' }}>
+			<BackButton />
 			<h1 className="hub-title" style={{ textAlign: 'center' }}>{mode === 'signup' ? 'Create account' : 'Log in'}</h1>
 			<div className="hub-cards" style={{ padding: 24 }}>
 				<form onSubmit={handleSubmit}>

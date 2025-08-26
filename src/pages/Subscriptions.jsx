@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client.js';
+import BackButton from '../components/BackButton.jsx';
 
 const plans = [
 	{ id: 'free', name: 'Free', price: 0, features: ['Basic usage', 'Community support'] },
@@ -59,6 +60,7 @@ export default function Subscriptions() {
 
 	return (
 		<div className="builder-hub" style={{ maxWidth: 1100, margin: '80px auto' }}>
+			<BackButton />
 			<h1 className="hub-title" style={{ color: '#111827' }}>Choose your plan</h1>
 			{toast && <div style={{ background: '#ecfdf5', color: '#065f46', padding: 12, borderRadius: 8, marginTop: 12 }}>{toast}</div>}
 			{error && <div style={{ background: '#fee2e2', color: '#991b1b', padding: 12, borderRadius: 8, marginTop: 12 }}>{error}</div>}

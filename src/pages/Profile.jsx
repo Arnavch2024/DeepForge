@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client.js';
+import BackButton from '../components/BackButton.jsx';
 
 export default function Profile() {
 	const [loading, setLoading] = useState(true);
@@ -51,6 +52,7 @@ export default function Profile() {
 
 	return (
 		<div className="builder-hub" style={{ maxWidth: 640, margin: '80px auto' }}>
+			<BackButton />
 			<h1 className="hub-title">Profile</h1>
 			<div className="hub-cards" style={{ padding: 24 }}>
 				<div style={{ marginBottom: 16, color: '#94a3b8' }}>

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client.js';
+import BackButton from '../components/BackButton.jsx';
 
 export default function Chats() {
 	const [messages, setMessages] = useState([]);
@@ -62,6 +63,7 @@ export default function Chats() {
 
 	return (
 		<div className="builder-hub" style={{ maxWidth: 800, margin: '80px auto' }}>
+			<BackButton />
 			<h1 className="hub-title" style={{ color: '#111827' }}>Chats</h1>
 			<div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
 				<span style={{ color: '#6b7280' }}>Mode:</span>
