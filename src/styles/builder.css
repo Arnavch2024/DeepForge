@@ -222,15 +222,6 @@
   color: #cbd5e1;
 }
 
-.code-copy-btn {
-  padding: 6px 12px;
-  font-size: 12px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
-}
-
-.code-show-raw-btn {
-  background: #4a5568;
-}
 
 .code-content {
   flex: 1;

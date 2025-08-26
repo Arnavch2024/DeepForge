@@ -546,10 +546,10 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
                 <div className="code-header">
                   <div className="code-title">Generated Code</div>
                   <div className="flex space-x-2">
-                    <button onClick={() => setShowRawCode(!showRawCode)} className="builder-btn code-show-raw-btn">
+                    <button onClick={() => setShowRawCode(!showRawCode)} className="builder-btn">
                       {showRawCode ? 'Formatted' : 'Raw'}
                     </button>
-                    <button onClick={_copyCode} className="code-copy-btn">
+                    <button onClick={_copyCode} className="builder-btn">
                       <TbCopy /> Copy
                     </button>
                   </div>
