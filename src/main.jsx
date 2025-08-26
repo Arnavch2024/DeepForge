@@ -24,7 +24,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <div className="bg-grid" />
-      <Navbar />
       <div className="app-shell">
       <Routes>
         <Route path="/" element={<App />} />
