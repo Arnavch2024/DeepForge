@@ -6,6 +6,7 @@ import tempfile
 import textwrap
 import json
 import os
+import traceback
 
 from typing import Dict, List, Tuple, Any, Optional
 
@@ -156,177 +157,186 @@ class ValidationError(Exception):
 	"""Custom exception for validation errors"""
 	pass
 
-def validate_cnn_graph(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -> List[str]:
-	"""Validate CNN graph structure and return list of errors/warnings"""
-	errors = []
-	warnings = []
+def validate_cnn_graph(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+    """
+    Validate CNN graph structure and return dictionary of errors and warnings.
+    
+    Args:
+        nodes: List of node objects in the graph
+        edges: List of edge objects connecting nodes
+        
+    Returns:
+        Dict containing 'errors' and 'warnings' lists
+    """
+    errors = []
+    warnings = []
+    
+    if not nodes:
+        errors.append("No nodes found in the graph")
+        return {"errors": errors, "warnings": warnings}
+    
+    # Check for required nodes
+    node_types = [_n_type(n) for n in nodes]
+    if 'inputImage' not in node_types:
+        errors.append("CNN must have exactly one input layer")
+    if 'output' not in node_types:
+        errors.append("CNN must have exactly one output layer")
+    
+    # Check for multiple input/output nodes
+    input_count = node_types.count('inputImage')
+    output_count = node_types.count('output')
+    if input_count > 1:
+        errors.append(f"CNN cannot have multiple input layers (found {input_count})")
+    if output_count > 1:
+        errors.append(f"CNN cannot have multiple output layers (found {output_count})")
+    
+    # Check for isolated nodes (no connections)
+    connected_nodes = set()
+    for edge in edges:
+        connected_nodes.add(edge.get('source'))
+        connected_nodes.add(edge.get('target'))
+    
+    for node in nodes:
+        if node['id'] not in connected_nodes:
+            warnings.append(f"Node '{_n_label(node)}' ({_n_type(node)}) is not connected to the graph")
+    
+    # Check for cycles (basic check)
+    if len(edges) >= len(nodes):
+        warnings.append("Graph may contain cycles - ensure proper layer ordering")
+    
+    # Enhanced layer compatibility and connection validation
+    conv_layers = [n for n in nodes if _n_type(n) in ['conv2d', 'maxpool']]
+    dense_layers = [n for n in nodes if _n_type(n) in ['dense', 'output']]
+    
+    # Check layer ordering and compatibility
+    if conv_layers and dense_layers:
+        # Check if flatten exists between conv and dense
+        has_flatten = any(_n_type(n) == 'flatten' for n in nodes)
+        if not has_flatten:
+            errors.append("Cannot connect convolutional layers directly to dense layers - add a Flatten layer in between")
 	
-	if not nodes:
-		errors.append("No nodes found in the graph")
-		return errors
+    # Check for invalid layer sequences
+    for i, node in enumerate(nodes):
+        node_type = _n_type(node)
+        
+        # Check what comes after this node
+        for edge in edges:
+            if edge.get('source') == node['id']:
+                target_node = next((n for n in nodes if n['id'] == edge.get('target')), None)
+                if target_node:
+                    target_type = _n_type(target_node)
+                    
+                    # Invalid sequences
+                    if node_type == 'flatten' and target_type in ['conv2d', 'maxpool']:
+                        errors.append(f"Cannot connect Flatten layer to {target_type} - Flatten should only connect to Dense/Output layers")
+                    
+                    if node_type == 'output' and target_type != 'output':
+                        errors.append(f"Output layer cannot have outgoing connections to {target_type}")
+                    
+                    if node_type == 'inputImage' and target_type not in ['conv2d', 'maxpool', 'batchnorm']:
+                        errors.append(f"Input layer should connect to Conv2D, MaxPool, or BatchNorm, not {target_type}")
+                    
+                    if node_type == 'batchnorm' and target_type == 'batchnorm':
+                        warnings.append("Consecutive BatchNorm layers are usually unnecessary - consider removing one")
+                    
+                    if node_type == 'dropout' and target_type == 'dropout':
+                        warnings.append("Consecutive Dropout layers may cause excessive regularization")
+                    
+                    if node_type == 'maxpool' and target_type == 'maxpool':
+                        warnings.append("Consecutive MaxPool layers will rapidly reduce spatial dimensions - consider alternatives")
 	
-	# Check for required nodes
-	node_types = [_n_type(n) for n in nodes]
-	if 'inputImage' not in node_types:
-		errors.append("CNN must have exactly one input layer")
-	if 'output' not in node_types:
-		errors.append("CNN must have exactly one output layer")
-	
-	# Check for multiple input/output nodes
-	input_count = node_types.count('inputImage')
-	output_count = node_types.count('output')
-	if input_count > 1:
-		errors.append(f"CNN cannot have multiple input layers (found {input_count})")
-	if output_count > 1:
-		errors.append(f"CNN cannot have multiple output layers (found {output_count})")
-	
-	# Check for isolated nodes (no connections)
-	connected_nodes = set()
-	for edge in edges:
-		connected_nodes.add(edge.get('source'))
-		connected_nodes.add(edge.get('target'))
-	
-	for node in nodes:
-		if node['id'] not in connected_nodes:
-			warnings.append(f"Node '{_n_label(node)}' ({_n_type(node)}) is not connected to the graph")
-	
-	# Check for cycles (basic check)
-	if len(edges) >= len(nodes):
-		warnings.append("Graph may contain cycles - ensure proper layer ordering")
-	
-	# Enhanced layer compatibility and connection validation
-	conv_layers = [n for n in nodes if _n_type(n) in ['conv2d', 'maxpool']]
-	dense_layers = [n for n in nodes if _n_type(n) in ['dense', 'output']]
-	
-	# Check layer ordering and compatibility
-	if conv_layers and dense_layers:
-		# Check if flatten exists between conv and dense
-		has_flatten = any(_n_type(n) == 'flatten' for n in nodes)
-		if not has_flatten:
-			errors.append("Cannot connect convolutional layers directly to dense layers - add a Flatten layer in between")
-	
-	# Check for invalid layer sequences
-	for i, node in enumerate(nodes):
-		node_type = _n_type(node)
+    # Parameter validation and best practices
+    for node in nodes:
+        node_type = _n_type(node)
+        params = _n_params(node)
+        
+        if node_type == 'inputImage':
+            width = params.get('width', 0)
+            height = params.get('height', 0)
+            channels = params.get('channels', 0)
+            
+            if width <= 0 or height <= 0:
+                errors.append(f"Input dimensions must be positive (got {width}x{height})")
+            if channels not in [1, 3]:
+                errors.append(f"Input channels should be 1 (grayscale) or 3 (RGB), got {channels}")
+            if width > 1024 or height > 1024:
+                warnings.append(f"Large input dimensions ({width}x{height}) may cause memory issues")
 		
-		# Check what comes after this node
-		for edge in edges:
-			if edge.get('source') == node['id']:
-				target_node = next((n for n in nodes if n['id'] == edge.get('target')), None)
-				if target_node:
-					target_type = _n_type(target_node)
-					
-					# Invalid sequences
-					if node_type == 'flatten' and target_type in ['conv2d', 'maxpool']:
-						errors.append(f"Cannot connect Flatten layer to {target_type} - Flatten should only connect to Dense/Output layers")
-					
-					if node_type == 'output' and target_type != 'output':
-						errors.append(f"Output layer cannot have outgoing connections to {target_type}")
-					
-					if node_type == 'inputImage' and target_type not in ['conv2d', 'maxpool', 'batchnorm']:
-						errors.append(f"Input layer should connect to Conv2D, MaxPool, or BatchNorm, not {target_type}")
-					
-					if node_type == 'batchnorm' and target_type == 'batchnorm':
-						warnings.append("Consecutive BatchNorm layers are usually unnecessary - consider removing one")
-					
-					if node_type == 'dropout' and target_type == 'dropout':
-						warnings.append("Consecutive Dropout layers may cause excessive regularization")
-					
-					if node_type == 'maxpool' and target_type == 'maxpool':
-						warnings.append("Consecutive MaxPool layers will rapidly reduce spatial dimensions - consider alternatives")
-	
-	# Parameter validation and best practices
-	for node in nodes:
-		node_type = _n_type(node)
-		params = _n_params(node)
+        elif node_type == 'conv2d':
+            filters = params.get('filters', 0)
+            kernel = params.get('kernel', '3x3')
+            
+            if filters <= 0:
+                errors.append(f"Conv2D filters must be positive, got {filters}")
+            if filters > 512:
+                warnings.append(f"Very large number of filters ({filters}) may cause overfitting")
+            
+            # Validate kernel size
+            if isinstance(kernel, str):
+                if 'x' in kernel:
+                    parts = kernel.split('x')
+                    if len(parts) == 2:
+                        try:
+                            k_w, k_h = int(parts[0]), int(parts[1])
+                            if k_w <= 0 or k_h <= 0:
+                                errors.append(f"Invalid kernel size: {kernel}")
+                            if k_w > 11 or k_h > 11:
+                                warnings.append(f"Very large kernel size ({kernel}) may be inefficient")
+                        except ValueError:
+                            errors.append(f"Invalid kernel size format: {kernel}")
 		
-		if node_type == 'inputImage':
-			width = params.get('width', 0)
-			height = params.get('height', 0)
-			channels = params.get('channels', 0)
-			
-			if width <= 0 or height <= 0:
-				errors.append(f"Input dimensions must be positive (got {width}x{height})")
-			if channels not in [1, 3]:
-				errors.append(f"Input channels should be 1 (grayscale) or 3 (RGB), got {channels}")
-			if width > 1024 or height > 1024:
-				warnings.append(f"Large input dimensions ({width}x{height}) may cause memory issues")
+        elif node_type == 'dense':
+            units = params.get('units', 0)
+            if units <= 0:
+                errors.append(f"Dense layer units must be positive, got {units}")
+            if units > 4096:
+                warnings.append(f"Very large dense layer ({units} units) may cause overfitting")
 		
-		elif node_type == 'conv2d':
-			filters = params.get('filters', 0)
-			kernel = params.get('kernel', '3x3')
-			
-			if filters <= 0:
-				errors.append(f"Conv2D filters must be positive, got {filters}")
-			if filters > 512:
-				warnings.append(f"Very large number of filters ({filters}) may cause overfitting")
-			
-			# Validate kernel size
-			if isinstance(kernel, str):
-				if 'x' in kernel:
-					parts = kernel.split('x')
-					if len(parts) == 2:
-						try:
-							k_w, k_h = int(parts[0]), int(parts[1])
-							if k_w <= 0 or k_h <= 0:
-								errors.append(f"Invalid kernel size: {kernel}")
-							if k_w > 11 or k_h > 11:
-								warnings.append(f"Very large kernel size ({kernel}) may be inefficient")
-						except ValueError:
-							errors.append(f"Invalid kernel size format: {kernel}")
-		
-		elif node_type == 'dense':
-			units = params.get('units', 0)
-			if units <= 0:
-				errors.append(f"Dense layer units must be positive, got {units}")
-			if units > 4096:
-				warnings.append(f"Very large dense layer ({units} units) may cause overfitting")
-		
-		elif node_type == 'output':
-			classes = params.get('classes', 0)
-			if classes <= 0:
-				errors.append(f"Output classes must be positive, got {classes}")
-			if classes > 1000:
-				warnings.append(f"Very large number of classes ({classes}) may require more training data")
+        elif node_type == 'output':
+            classes = params.get('classes', 0)
+            if classes <= 0:
+                errors.append(f"Output classes must be positive, got {classes}")
+            if classes > 1000:
+                warnings.append(f"Very large number of classes ({classes}) may require more training data")
 	
-	# Check for reasonable layer counts
-	if len(conv_layers) > 10:
-		warnings.append("Very deep CNN detected - consider reducing layers for training efficiency")
-	if len(dense_layers) > 5:
-		warnings.append("Many dense layers detected - consider regularization to prevent overfitting")
-	
-	# Check for missing essential layers
-	if conv_layers and not any(_n_type(n) == 'maxpool' for n in nodes):
-		warnings.append("Consider adding MaxPool layers after Conv2D to reduce spatial dimensions")
-	
-	# Check for pre-trained model compatibility
-	pretrained_nodes = [n for n in nodes if _n_type(n) == 'pretrained']
-	if pretrained_nodes:
-		if len(pretrained_nodes) > 1:
-			errors.append("Cannot have multiple pre-trained models in one CNN")
-		
-		# Check if pre-trained model is properly positioned
-		for pretrained_node in pretrained_nodes:
-			has_input_before = False
-			has_dense_after = False
-			
-			for edge in edges:
-				if edge.get('target') == pretrained_node['id']:
-					source_node = next((n for n in nodes if n['id'] == edge.get('source')), None)
-					if source_node and _n_type(source_node) == 'inputImage':
-						has_input_before = True
-				
-				if edge.get('source') == pretrained_node['id']:
-					target_node = next((n for n in nodes if n['id'] == edge.get('target')), None)
-					if target_node and _n_type(target_node) in ['dense', 'output']:
-						has_dense_after = True
-			
-			if not has_input_before:
-				errors.append("Pre-trained model must come after Input Image layer")
-			if not has_dense_after:
-				errors.append("Pre-trained model must connect to Dense or Output layers")
-	
-	return errors + warnings
+    # Check for reasonable layer counts
+    if len(conv_layers) > 10:
+        warnings.append("Very deep CNN detected - consider reducing layers for training efficiency")
+    if len(dense_layers) > 5:
+        warnings.append("Many dense layers detected - consider regularization to prevent overfitting")
+    
+    # Check for missing essential layers
+    if conv_layers and not any(_n_type(n) == 'maxpool' for n in nodes):
+        warnings.append("Consider adding MaxPool layers after Conv2D to reduce spatial dimensions")
+    
+    # Check for pre-trained model compatibility
+    pretrained_nodes = [n for n in nodes if _n_type(n) == 'pretrained']
+    if pretrained_nodes:
+        if len(pretrained_nodes) > 1:
+            errors.append("Cannot have multiple pre-trained models in one CNN")
+        
+        # Check if pre-trained model is properly positioned
+        for pretrained_node in pretrained_nodes:
+            has_input_before = False
+            has_dense_after = False
+            
+            for edge in edges:
+                if edge.get('target') == pretrained_node['id']:
+                    source_node = next((n for n in nodes if n['id'] == edge.get('source')), None)
+                    if source_node and _n_type(source_node) == 'inputImage':
+                        has_input_before = True
+                
+                if edge.get('source') == pretrained_node['id']:
+                    target_node = next((n for n in nodes if n['id'] == edge.get('target')), None)
+                    if target_node and _n_type(target_node) in ['dense', 'output']:
+                        has_dense_after = True
+            
+            if not has_input_before:
+                errors.append("Pre-trained model must come after Input Image layer")
+            if not has_dense_after:
+                errors.append("Pre-trained model must connect to Dense or Output layers")
+    
+    return errors + warnings
 
 def validate_rag_graph(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -> List[str]:
 	"""Validate RAG graph structure and return list of errors/warnings"""
@@ -613,142 +623,527 @@ def topological_order(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) 
 # --------------------------------------
 
 def generate_cnn_code(graph):
-	nodes = graph.get('nodes') or []
-	edges = graph.get('edges') or []
-	ordered = topological_order(nodes, edges)
+    """
+    Generate Keras code for a CNN model from a graph definition.
+    
+    Args:
+        graph: Dictionary containing 'nodes' and 'edges' defining the CNN architecture
+        
+    Returns:
+        String containing the generated Python code
+    """
+    nodes = graph.get('nodes') or []
+    edges = graph.get('edges') or []
+    ordered = topological_order(nodes, edges)
 
-	# Defaults
-	in_w, in_h, in_c = 224, 224, 3
-	for n in ordered:
-		t = _n_type(n)
-		p = _n_params(n)
-		if t == 'inputImage':
-			in_w = int(p.get('width') or in_w)
-			in_h = int(p.get('height') or in_h)
-			in_c = int(p.get('channels') or in_c)
-			break
+    # Defaults
+    in_w, in_h, in_c = 224, 224, 3
+    batch_size = 32
+    use_data_augmentation = False
+    data_augmentation_params = {}
+    
+    # Find input node and collect parameters
+    input_node = None
+    for n in ordered:
+        t = _n_type(n)
+        p = _n_params(n)
+        if t == 'inputImage':
+            input_node = n
+            in_w = int(p.get('width') or in_w)
+            in_h = int(p.get('height') or in_h)
+            in_c = int(p.get('channels') or in_c)
+            batch_size = int(p.get('batch_size') or batch_size)
+            use_data_augmentation = p.get('use_data_augmentation', False)
+            if use_data_augmentation:
+                data_augmentation_params = {
+                    'rotation_range': int(p.get('rotation_range', 20)),
+                    'width_shift_range': float(p.get('width_shift_range', 0.2)),
+                    'height_shift_range': float(p.get('height_shift_range', 0.2)),
+                    'horizontal_flip': p.get('horizontal_flip', True),
+                    'vertical_flip': p.get('vertical_flip', False),
+                    'brightness_range': p.get('brightness_range', None),
+                    'zoom_range': float(p.get('zoom_range', 0.2)),
+                    'fill_mode': p.get('fill_mode', 'nearest'),
+                    'shear_range': float(p.get('shear_range', 0.0)),
+                    'channel_shift_range': float(p.get('channel_shift_range', 0.0))
+                }
+            break
 
-	lines: List[str] = []
-	lines.append('import tensorflow as tf')
-	lines.append('from tensorflow.keras import layers, models')
-	lines.append('from tensorflow.keras.applications import ResNet50, VGG16, MobileNetV2')
-	lines.append('')
+    # Initialize code lines
+    lines: List[str] = []
+    lines.append('import tensorflow as tf')
+    lines.append('from tensorflow.keras import layers, models, Sequential')
+    lines.append('from tensorflow.keras.applications import ResNet50, VGG16, MobileNetV2, EfficientNetB0')
+    lines.append('from tensorflow.keras.optimizers import Adam')
+    lines.append('from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau')
+    lines.append('from tensorflow.keras.preprocessing.image import ImageDataGenerator')
+    lines.append('import numpy as np')
+    lines.append('import matplotlib.pyplot as plt')
+    lines.append('')
 	
-	# Check if this is a pre-trained model
-	pretrained_type = None
-	for n in ordered:
-		if _n_type(n) == 'pretrained':
-			pretrained_type = _n_params(n).get('model', 'resnet50')
-			break
-	
-	if pretrained_type:
-		# Generate pre-trained model code
-		lines.append(f'# Using pre-trained {pretrained_type}')
-		if pretrained_type == 'resnet50':
-			lines.append(f'base_model = ResNet50(weights="imagenet", include_top=False, input_shape=({in_h}, {in_w}, {in_c}))')
-		elif pretrained_type == 'vgg16':
-			lines.append(f'base_model = VGG16(weights="imagenet", include_top=False, input_shape=({in_h}, {in_w}, {in_c}))')
-		elif pretrained_type == 'mobilenet':
-			lines.append(f'base_model = MobileNetV2(weights="imagenet", include_top=False, input_shape=({in_h}, {in_w}, {in_c}))')
-		else:
-			lines.append(f'base_model = ResNet50(weights="imagenet", include_top=False, input_shape=({in_h}, {in_w}, {in_c}))')
-		
-		lines.append('')
-		lines.append('# Freeze base model layers')
-		lines.append('base_model.trainable = False')
-		lines.append('')
-		lines.append('model = models.Sequential([')
-		lines.append('    base_model,')
-		lines.append('    layers.GlobalAveragePooling2D(),')
-		
-		# Add custom top layers
-		for n in ordered:
-			type_ = _n_type(n)
-			params = _n_params(n)
-			if type_ in ['dense', 'output']:
-				if type_ == 'dense':
-					units = int(params.get('units') or 128)
-					activation = str(params.get('activation') or 'relu')
-					lines.append(f"    layers.Dense({units}, activation='{activation}'),")
-				elif type_ == 'output':
-					classes = int(params.get('classes') or 10)
-					activation = str(params.get('activation') or 'softmax')
-					lines.append(f"    layers.Dense({classes}, activation='{activation}')")
-		
-		lines.append('])')
-		lines.append('')
-		
-		# Set loss based on output
-		for n in ordered:
-			if _n_type(n) == 'output':
-				classes = int(_n_params(n).get('classes') or 10)
-				activation = str(_n_params(n).get('activation') or 'softmax')
-				if activation == 'softmax' and classes > 1:
-					loss = 'sparse_categorical_crossentropy'
-				elif activation == 'sigmoid' and classes == 1:
-					loss = 'binary_crossentropy'
-				else:
-					loss = 'sparse_categorical_crossentropy'
-				break
-		else:
-			loss = 'sparse_categorical_crossentropy'
-		
-		metrics = "['accuracy']"
-		lines.append(f"model.compile(optimizer='adam', loss='{loss}', metrics={metrics})")
-		lines.append('model.summary()')
-		code = "\n".join(lines)
-		return code
+    # Add data augmentation if enabled
+    if use_data_augmentation:
+        lines.append('# Data Augmentation')
+        lines.append('data_augmentation = Sequential([')
+        
+        # Add rotation if specified and valid
+        rotation = data_augmentation_params.get("rotation_range", 0)
+        if rotation and isinstance(rotation, (int, float)) and rotation > 0:
+            lines.append(f'    layers.RandomRotation({rotation}/360),')
+        
+        # Add width and height shift if specified and valid
+        width_shift = data_augmentation_params.get("width_shift_range", 0)
+        height_shift = data_augmentation_params.get("height_shift_range", 0)
+        if (isinstance(width_shift, (int, float)) and width_shift > 0) or \
+           (isinstance(height_shift, (int, float)) and height_shift > 0):
+            width_shift = max(0, min(float(width_shift), 1.0))  # Ensure between 0 and 1
+            height_shift = max(0, min(float(height_shift), 1.0))  # Ensure between 0 and 1
+            lines.append(f'    layers.RandomTranslation({height_shift}, {width_shift}),')
+        
+        # Add zoom if specified and valid
+        zoom = data_augmentation_params.get("zoom_range", 0)
+        if zoom and isinstance(zoom, (int, float)) and zoom > 0:
+            zoom = max(0, min(float(zoom), 1.0))  # Ensure between 0 and 1
+            lines.append(f'    layers.RandomZoom({zoom}),')
+        
+        # Add flips if specified
+        if data_augmentation_params.get("horizontal_flip"):
+            lines.append('    layers.RandomFlip("horizontal"),')
+        if data_augmentation_params.get("vertical_flip"):
+            lines.append('    layers.RandomFlip("vertical"),')
+        
+        # Add brightness adjustment if specified and valid
+        brightness = data_augmentation_params.get("brightness_range")
+        if brightness and isinstance(brightness, (list, tuple)) and len(brightness) == 2:
+            try:
+                lower = float(brightness[0])
+                upper = float(brightness[1])
+                if lower < upper:
+                    lines.append(f'    layers.RandomBrightness(({lower}, {upper})),')
+            except (ValueError, TypeError):
+                pass  # Skip invalid brightness values
+        
+        # Always add normalization
+        lines.append('    layers.Rescaling(1./255)')
+        
+        lines.append('])\n')
+    else:
+        # Basic preprocessing with just normalization
+        lines.append('# Input preprocessing')
+        lines.append('preprocessing = Sequential([')
+        lines.append('    layers.Rescaling(1./255)')
+        
+        # Add normalization if specified
+        input_node = next((n for n in ordered if _n_type(n) == 'inputImage'), None)
+        if input_node and _n_params(input_node).get('normalization', False):
+            lines.append('    layers.Normalization(mean=0.0, variance=1.0)')
+            
+        lines.append('])\n')
 
-	# Standard sequential model generation
-	lines.append('model = models.Sequential()')
-	lines.append(f'model.add(layers.Input(shape=({in_h}, {in_w}, {in_c}))')
+    # Check if this is a pre-trained model
+    pretrained_type = None
+    pretrained_trainable = False
+    pretrained_params = {}
+    
+    for n in ordered:
+        if _n_type(n) == 'pretrained':
+            pretrained_type = _n_params(n).get('model', 'resnet50')
+            pretrained_params = _n_params(n)
+            pretrained_trainable = pretrained_params.get('trainable', False)
+            break
+    
+    if pretrained_type:
+        # Generate pre-trained model code
+        lines.append(f'# Using pre-trained {pretrained_type}')
+        
+        # Different pre-trained models with options
+        if pretrained_type == 'resnet50':
+            lines.append(f'base_model = ResNet50(weights="imagenet", include_top=False, input_shape=({in_h}, {in_w}, {in_c}))')
+        elif pretrained_type == 'vgg16':
+            lines.append(f'base_model = VGG16(weights="imagenet", include_top=False, input_shape=({in_h}, {in_w}, {in_c}))')
+        elif pretrained_type == 'mobilenet':
+            lines.append(f'base_model = MobileNetV2(weights="imagenet", include_top=False, input_shape=({in_h}, {in_w}, {in_c}))')
+        elif pretrained_type == 'efficientnet':
+            lines.append(f'base_model = EfficientNetB0(weights="imagenet", include_top=False, input_shape=({in_h}, {in_w}, {in_c}))')
+        else:
+            lines.append(f'base_model = ResNet50(weights="imagenet", include_top=False, input_shape=({in_h}, {in_w}, {in_c}))')
+        
+        lines.append('')
+        lines.append('# Configure base model trainability')
+        lines.append(f'base_model.trainable = {str(pretrained_trainable).lower()}')
+        
+        # Add fine-tuning options if the base model is trainable
+        if pretrained_trainable:
+            lines.append('')
+            lines.append('# Fine-tuning: Unfreeze some top layers')
+            lines.append('if hasattr(base_model, "layers"):')
+            lines.append('    for layer in base_model.layers[-10:]:')
+            lines.append('        if not isinstance(layer, layers.BatchNormalization):')
+            lines.append('            layer.trainable = True')
+        
+        lines.append('')
+        lines.append('# Create model with preprocessing and base model')
+        lines.append('model = models.Sequential()')
+        if use_data_augmentation:
+            lines.append('model.add(data_augmentation)')
+        else:
+            lines.append('model.add(preprocessing)')
+            
+        lines.append('model.add(base_model)')
+        lines.append('model.add(layers.GlobalAveragePooling2D())')
+        
+        # Add batch normalization if specified in input node
+        input_node = next((n for n in ordered if _n_type(n) == 'inputImage'), None)
+        if input_node and _n_params(input_node).get('batch_normalization', False):
+            lines.append('model.add(layers.BatchNormalization())')
+        
+        # Add custom top layers
+        for n in ordered:
+            type_ = _n_type(n)
+            params = _n_params(n)
+            if type_ in ['dense', 'output']:
+                if type_ == 'dense':
+                    units = int(params.get('units') or 128)
+                    activation = str(params.get('activation') or 'relu')
+                    use_bias = params.get('use_bias', True)
+                    kernel_initializer = params.get('kernel_initializer', 'glorot_uniform')
+                    kernel_regularizer = params.get('kernel_regularizer')
+                    bias_regularizer = params.get('bias_regularizer')
+                    
+                    # Build the layer string with optional parameters
+                    layer_str = f"layers.Dense({units}, activation='{activation}'"
+                    layer_str += f", use_bias={str(use_bias).lower()}"
+                    layer_str += f", kernel_initializer='{kernel_initializer}'"
+                    
+                    if kernel_regularizer:
+                        if kernel_regularizer == 'l1':
+                            layer_str += ", kernel_regularizer=tf.keras.regularizers.l1(0.01)"
+                        elif kernel_regularizer == 'l2':
+                            layer_str += ", kernel_regularizer=tf.keras.regularizers.l2(0.01)"
+                    
+                    if bias_regularizer:
+                        if bias_regularizer == 'l1':
+                            layer_str += ", bias_regularizer=tf.keras.regularizers.l1(0.01)"
+                        elif bias_regularizer == 'l2':
+                            layer_str += ", bias_regularizer=tf.keras.regularizers.l2(0.01)"
+                    
+                    layer_str += ")"
+                    lines.append(f'    {layer_str},')
+                elif type_ == 'output':
+                    classes = int(params.get('classes') or 10)
+                    activation = str(params.get('activation') or 'softmax')
+                    lines.append(f'    layers.Dense({classes}, activation="{activation}")')
+        
+        lines.append(')')
+        lines.append('')
+        
+        # Set loss based on output
+        for n in ordered:
+            if _n_type(n) == 'output':
+                classes = int(_n_params(n).get('classes') or 10)
+                activation = str(_n_params(n).get('activation') or 'softmax')
+                if activation == 'softmax' and classes > 1:
+                    loss = 'sparse_categorical_crossentropy'
+                elif activation == 'sigmoid' and classes == 1:
+                    loss = 'binary_crossentropy'
+                else:
+                    loss = 'sparse_categorical_crossentropy'
+                break
+        else:
+            loss = 'sparse_categorical_crossentropy'
+        
+        metrics = "['accuracy']"
+        lines.append(f'model.compile(optimizer="adam", loss="{loss}", metrics={metrics})')
+        lines.append('model.summary()')
+        code = "\n".join(lines)
+        return code
 
-	loss = 'sparse_categorical_crossentropy'
-	metrics = "['accuracy']"
+    # Standard sequential model generation
+    lines.append('# Create model')
+    lines.append('model = models.Sequential()')
+    
+    # Add input shape and preprocessing
+    if use_data_augmentation:
+        lines.append('model.add(data_augmentation)')
+    else:
+        lines.append(f'model.add(layers.Input(shape=({in_h}, {in_w}, {in_c})))')
+        lines.append('model.add(layers.Rescaling(1./255))')
+    
+    # Initialize variables for model compilation
+    loss = 'sparse_categorical_crossentropy'
+    metrics = "['accuracy']"
+    optimizer = 'Adam(learning_rate=0.001)'
+    
+    # Check if we need custom loss function
+    for n in ordered:
+        if _n_type(n) == 'output':
+            classes = int(_n_params(n).get('classes') or 10)
+            activation = str(_n_params(n).get('activation') or 'softmax')
+            if classes == 1 and activation == 'sigmoid':
+                loss = 'binary_crossentropy'
+            elif classes > 2 and activation == 'softmax':
+                loss = 'sparse_categorical_crossentropy'
+            elif classes == 2 and activation == 'sigmoid':
+                loss = 'binary_crossentropy'
 
-	for n in ordered:
-		type_ = _n_type(n)
-		params = _n_params(n)
-		if type_ == 'inputImage':
-			continue
-		if type_ == 'conv2d':
-			filters = int(params.get('filters') or 32)
-			kernel = _to_tuple_2(params.get('kernel') or '3x3', (3, 3))
-			stride = _to_tuple_2(params.get('stride') or '1x1', (1, 1))
-			padding = str(params.get('padding') or 'same')
-			activation = str(params.get('activation') or 'relu')
-			lines.append(f"model.add(layers.Conv2D({filters}, {kernel}, strides={stride}, padding='{padding}', activation='{activation}'))")
-		elif type_ == 'maxpool':
-			pool = _to_tuple_2(params.get('pool') or '2x2', (2, 2))
-			stride = _to_tuple_2(params.get('stride') or '2x2', pool)
-			lines.append(f'model.add(layers.MaxPooling2D(pool_size={pool}, strides={stride}))')
-		elif type_ == 'batchnorm':
-			momentum = float(params.get('momentum') or 0.99)
-			epsilon = float(params.get('epsilon') or 0.001)
-			lines.append(f'model.add(layers.BatchNormalization(momentum={momentum}, epsilon={epsilon}))')
-		elif type_ == 'dropout':
-			rate = float(params.get('rate') or 0.5)
-			lines.append(f'model.add(layers.Dropout({rate}))')
-		elif type_ == 'flatten':
-			lines.append('model.add(layers.Flatten())')
-		elif type_ == 'dense':
-			units = int(params.get('units') or 128)
-			activation = str(params.get('activation') or 'relu')
-			lines.append(f"model.add(layers.Dense({units}, activation='{activation}'))")
-		elif type_ == 'output':
-			classes = int(params.get('classes') or 10)
-			activation = str(params.get('activation') or 'softmax')
-			lines.append(f"model.add(layers.Dense({classes}, activation='{activation}'))")
-			if activation == 'softmax' and classes > 1:
-				loss = 'sparse_categorical_crossentropy'
-			elif activation == 'sigmoid' and classes == 1:
-				loss = 'binary_crossentropy'
+        for n in ordered:
+            type_ = _n_type(n)
+            params = _n_params(n)
+            if type_ == 'inputImage':
+                continue
+            if type_ == 'conv2d':
+                filters = int(params.get('filters') or 32)
+                kernel = _to_tuple_2(params.get('kernel') or '3x3', (3, 3))
+                stride = _to_tuple_2(params.get('stride') or '1x1', (1, 1))
+                padding = str(params.get('padding') or 'same')
+                activation = str(params.get('activation') or 'relu')
+                use_bias = params.get('use_bias', True)
+                kernel_initializer = params.get('kernel_initializer', 'glorot_uniform')
+                kernel_regularizer = params.get('kernel_regularizer')
+                
+                # Build the layer string with optional parameters
+                layer_str = f"layers.Conv2D({filters}, {kernel}, strides={stride}, padding='{padding}'"
+                layer_str += f", activation='{activation}'"
+                layer_str += f", use_bias={str(use_bias).lower()}"
+                layer_str += f", kernel_initializer='{kernel_initializer}'"
+                
+                if kernel_regularizer:
+                    if kernel_regularizer == 'l1':
+                        layer_str += ", kernel_regularizer=tf.keras.regularizers.l1(0.01)"
+                    elif kernel_regularizer == 'l2':
+                        layer_str += ", kernel_regularizer=tf.keras.regularizers.l2(0.01)"
+                
+                layer_str += ")"
+                lines.append(f"    model.add({layer_str})")
+            elif type_ == 'maxpool':
+                pool = _to_tuple_2(params.get('pool') or '2x2', (2, 2))
+                stride = _to_tuple_2(params.get('stride') or '2x2', pool)
+                padding = str(params.get('padding') or 'valid')
+                
+                # Add MaxPooling2D with optional parameters
+                lines.append(f"    model.add(layers.MaxPooling2D(pool_size={pool}, strides={stride}, padding='{padding}'))")
+            elif type_ == 'batchnorm':
+                momentum = float(params.get('momentum') or 0.99)
+                epsilon = float(params.get('epsilon') or 0.001)
+                center = params.get('center', True)
+                scale = params.get('scale', True)
+                
+                lines.append('    model.add(layers.BatchNormalization(')
+                lines.append(f'        momentum={momentum},')
+                lines.append(f'        epsilon={epsilon},')
+                lines.append(f'        center={str(center).lower()},')
+                lines.append(f'        scale={str(scale).lower()}')
+                lines.append('    ))')
+            elif type_ == 'dropout':
+                rate = float(params.get('rate') or 0.5)
+                noise_shape = params.get('noise_shape')
+                seed = params.get('seed')
+                
+                layer_str = f"layers.Dropout({rate}"
+                if noise_shape:
+                    layer_str += f", noise_shape={noise_shape}"
+                if seed is not None:
+                    layer_str += f", seed={seed}"
+                layer_str += ")"
+                
+                lines.append(f"    model.add({layer_str})")
+            elif type_ == 'flatten':
+                lines.append('    model.add(layers.Flatten())')
+            elif type_ == 'dense':
+                units = int(params.get('units') or 128)
+                activation = str(params.get('activation') or 'relu')
+                use_bias = params.get('use_bias', True)
+                kernel_initializer = params.get('kernel_initializer', 'glorot_uniform')
+                kernel_regularizer = params.get('kernel_regularizer')
+                bias_regularizer = params.get('bias_regularizer')
+                
+                # Build the layer string with optional parameters
+                layer_str = f"layers.Dense({units}, activation='{activation}'"
+                layer_str += f", use_bias={str(use_bias).lower()}"
+                layer_str += f", kernel_initializer='{kernel_initializer}'"
+                
+                if kernel_regularizer:
+                    if kernel_regularizer == 'l1':
+                        layer_str += ", kernel_regularizer=tf.keras.regularizers.l1(0.01)"
+                    elif kernel_regularizer == 'l2':
+                        layer_str += ", kernel_regularizer=tf.keras.regularizers.l2(0.01)"
+                
+                if bias_regularizer:
+                    if bias_regularizer == 'l1':
+                        layer_str += ", bias_regularizer=tf.keras.regularizers.l1(0.01)"
+                    elif bias_regularizer == 'l2':
+                        layer_str += ", bias_regularizer=tf.keras.regularizers.l2(0.01)"
+                
+                layer_str += ")"
+                lines.append(f"    model.add({layer_str})")
+            elif type_ == 'output':
+                classes = int(params.get('classes') or 10)
+                activation = str(params.get('activation') or 'softmax')
+                use_bias = params.get('use_bias', True)
+                
+                # Handle different output types
+                if classes == 1 and activation == 'sigmoid':
+                    loss = 'binary_crossentropy'
+                    metrics = "['accuracy']"
+                elif classes > 2 and activation == 'softmax':
+                    loss = 'sparse_categorical_crossentropy'
+                    metrics = "['sparse_categorical_accuracy']"
+                elif classes == 2 and activation == 'sigmoid':
+                    loss = 'binary_crossentropy'
+                    metrics = "['accuracy']"
+                else:
+                    loss = 'sparse_categorical_crossentropy'
+                    metrics = "['accuracy']"
+                
+                # Build output layer with options
+                layer_str = f"layers.Dense({classes}, activation='{activation}'"
+                layer_str += f", use_bias={str(use_bias).lower()}"
+                layer_str += ", name='output')"
+                
+                lines.append(f"    model.add({layer_str})")
+            # Handle output layer
+            elif type_ == 'output':
+                classes = int(params.get('classes') or 10)
+                activation = str(params.get('activation') or 'softmax')
+                use_bias = params.get('use_bias', True)
+                
+                # Handle different output types
+                if classes == 1 and activation == 'sigmoid':
+                    loss = 'binary_crossentropy'
+                    metrics = "['accuracy']"
+                elif classes > 2 and activation == 'softmax':
+                    loss = 'sparse_categorical_crossentropy'
+                    metrics = "['sparse_categorical_accuracy']"
+                elif classes == 2 and activation == 'sigmoid':
+                    loss = 'binary_crossentropy'
+                    metrics = "['accuracy']"
+                else:
+                    loss = 'sparse_categorical_crossentropy'
+                    metrics = "['accuracy']"
+                
+                # Build output layer with options
+                layer_str = f"layers.Dense({classes}, activation='{activation}'"
+                layer_str += f", use_bias={str(use_bias).lower()}"
+                layer_str += ", name='output')"
+                
+                lines.append(f"    model.add({layer_str})")
+    
+    # Add model compilation
+    lines.append('')
+    lines.append('# Model compilation')
+    lines.append(f'model.compile(')
+    lines.append(f'    optimizer={optimizer},')
+    lines.append(f'    loss="{loss}",')
+    lines.append(f'    metrics={metrics}')
+    lines.append(')')
+    
+    # Add model summary and visualization
+    lines.append('')
+    lines.append('# Model summary')
+    lines.append('model.summary()')
+    lines.append('')
+    
+    # Add code for model training preparation
+    lines.append('''
+# Prepare callbacks
+callbacks = [
+    ModelCheckpoint(
+        filepath='best_model.keras',
+        save_weights_only=False,
+        monitor='val_accuracy',
+        mode='max',
+        save_best_only=True,
+        verbose=1
+    ),
+    EarlyStopping(
+        monitor='val_loss',
+        patience=10,
+        restore_best_weights=True,
+        verbose=1
+    ),
+    ReduceLROnPlateau(
+        monitor='val_loss',
+        factor=0.2,
+        patience=5,
+        min_lr=1e-6,
+        verbose=1
+    )
+]''')
 
-	lines.append('')
-	lines.append(f"model.compile(optimizer='adam', loss='{loss}', metrics={metrics})")
-	lines.append('model.summary()')
-	code = "\n".join(lines)
-	return code
+    # Add training code template
+    lines.append('''
+# Training parameters
+epochs = 50
+batch_size = ''' + str(batch_size) + '''
+
+# Example training code (uncomment and modify as needed)
+''')
+    
+    lines.append('''
+# Example of loading and preprocessing data
+# train_ds = tf.keras.utils.image_dataset_from_directory(
+#     'path/to/train',
+#     validation_split=0.2,
+#     subset="training",
+#     seed=42,
+#     image_size=(''' + str(in_h) + ', ' + str(in_w) + '''),
+#     batch_size=''' + str(batch_size) + '''
+# )
+# 
+# val_ds = tf.keras.utils.image_dataset_from_directory(
+#     'path/to/val',
+#     validation_split=0.2,
+#     subset="validation",
+#     seed=42,
+#     image_size=(''' + str(in_h) + ', ' + str(in_w) + '''),
+#     batch_size=''' + str(batch_size) + '''
+# )
+# 
+# # Train the model
+# history = model.fit(
+#     train_ds,
+#     validation_data=val_ds,
+#     epochs=epochs,
+#     callbacks=callbacks,
+#     verbose=1
+# )
+
+# Save the final model
+# model.save('final_model.keras')
+''')
+
+    # Add code for evaluation and visualization
+    lines.append('''
+# Example evaluation and visualization
+# def plot_training_history(history):
+#     # Plot training & validation accuracy values
+#     plt.figure(figsize=(12, 4))
+#     plt.subplot(1, 2, 1)
+#     plt.plot(history.history['accuracy'])
+#     plt.plot(history.history['val_accuracy'])
+#     plt.title('Model accuracy')
+#     plt.ylabel('Accuracy')
+#     plt.xlabel('Epoch')
+#     plt.legend(['Train', 'Validation'], loc='upper left')
+
+#     # Plot training & validation loss values
+#     plt.subplot(1, 2, 2)
+#     plt.plot(history.history['loss'])
+#     plt.plot(history.history['val_loss'])
+#     plt.title('Model loss')
+#     plt.ylabel('Loss')
+#     plt.xlabel('Epoch')
+#     plt.legend(['Train', 'Validation'], loc='upper left')
+#     plt.tight_layout()
+#     plt.show()
+
+# # Call the function with your training history
+# # plot_training_history(history)
+''')
+
+    # Join all lines and return the code
+    code = "\n".join(lines)
+    return code
 
 
 # -------------------------------------------
@@ -1407,9 +1802,13 @@ def format_code_with_black(code_str: str) -> str:
 @app.post('/generate')
 def generate():
     try:
+        print("\n=== New Code Generation Request ===")
         data = request.get_json(force=True)
+        print(f"Received data keys: {list(data.keys())}")
+        
         graph = data.get('graph')
         builder_type = data.get('builder_type') or data.get('type')  # 'cnn' or 'rag'
+        print(f"Builder type: {builder_type}")
         
         # Input validation
         if not graph or builder_type not in ('cnn', 'rag'):
@@ -1436,14 +1835,57 @@ def generate():
         
         # Generate code based on builder type
         try:
-            code = generate_cnn_code(graph) if builder_type == 'cnn' else generate_rag_code(graph)
+            # Add debug logging
+            print(f"Starting code generation for builder_type: {builder_type}")
+            print(f"Graph nodes: {len(graph.get('nodes', []))}, edges: {len(graph.get('edges', []))}")
             
-            # Format the generated code
+            # Generate the code
             try:
-                code = format_code_with_black(code)
-            except Exception as format_err:
-                print(f"Code formatting warning: {str(format_err)}")
-                # Continue with unformatted code if formatting fails
+                print(f"Starting code generation for type: {builder_type}")
+                if builder_type == 'cnn':
+                    print("Generating CNN code...")
+                    code = generate_cnn_code(graph)
+                else:
+                    print("Generating RAG code...")
+                    code = generate_rag_code(graph)
+                
+                print(f"Raw code generated. Length: {len(code) if code else 0} characters")
+                
+                if not code or not isinstance(code, str) or len(code.strip()) == 0:
+                    print("Error: Empty or invalid code generated")
+                    return jsonify({
+                        "success": False,
+                        "error": "Code generation resulted in empty output",
+                        "validation": {"errors": ["Code generation failed: Empty output"], "warnings": []},
+                        "code": ""
+                    }), 400
+                
+                # Format the code if it exists
+                try:
+                    print("Formatting code...")
+                    formatted_code = format_code_with_black(code)
+                    if formatted_code and len(formatted_code) > 10:  # Basic validation
+                        print("Code formatted successfully")
+                        code = formatted_code
+                    else:
+                        print("Warning: Formatting returned empty or invalid code, using unformatted code")
+                except Exception as format_err:
+                    print(f"Code formatting warning: {str(format_err)}")
+                    print("Using unformatted code")
+                    # Continue with unformatted code if formatting fails
+                
+                print(f"Final code length: {len(code)} characters")
+                
+            except Exception as gen_error:
+                error_msg = f"Error during code generation: {str(gen_error)}"
+                print(error_msg)
+                print(traceback.format_exc())
+                return jsonify({
+                    "success": False,
+                    "error": error_msg,
+                    "validation": {"errors": [f"Code generation failed: {error_msg}"], "warnings": []},
+                    "code": ""
+                }), 500
             
             return jsonify({
                 "success": True,

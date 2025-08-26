@@ -276,79 +276,88 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
   const hoverSchema = hoverCard.visible && hoverCard.type ? schemas?.[hoverCard.type] : null;
 
   const renderCodePanel = () => (
-    <div className="flex flex-col h-full">
-      <div className="flex justify-between items-center p-4 border-b border-gray-700">
-        <h3 className="text-lg font-medium">Generated Code</h3>
-        <div className="flex space-x-2">
-          <button
-            onClick={() => setShowRawCode(!showRawCode)}
-            className="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors"
-          >
-            {showRawCode ? 'Show Formatted' : 'Show Raw'}
-          </button>
-        </div>
-      </div>
-      
-      <div className="flex-1 overflow-auto">
-        {showRawCode ? (
-          <div className="p-4">
-            <pre className="bg-gray-900 p-4 rounded-md overflow-x-auto">
-              <code className="text-sm">
-                {generatedCode || '// Your generated code will appear here'}
-              </code>
-            </pre>
+    <div className="flex h-full overflow-hidden">
+      {/* Code Panel */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex justify-between items-center p-4 border-b border-gray-700">
+          <h3 className="text-lg font-medium">Generated Code</h3>
+          <div className="flex space-x-2">
+            <button
+              onClick={() => setShowRawCode(!showRawCode)}
+              className="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors"
+            >
+              {showRawCode ? 'Show Formatted' : 'Show Raw'}
+            </button>
           </div>
-        ) : (
-          <CodeDisplay 
-            code={generatedCode} 
-            language={codeLanguage}
-            className="h-full"
-          />
+        </div>
+        
+        <div className="flex-1 overflow-auto">
+          {showRawCode ? (
+            <div className="p-4">
+              <pre className="bg-gray-900 p-4 rounded-md overflow-x-auto">
+                <code className="text-sm">
+                  {generatedCode || '// Your generated code will appear here'}
+                </code>
+              </pre>
+            </div>
+          ) : (
+            <CodeDisplay 
+              code={generatedCode} 
+              language={codeLanguage}
+              className="h-full"
+            />
+          )}
+        </div>
+        
+        {genError && (
+          <div className="p-4 bg-red-900/30 border-t border-red-800 text-red-300 text-sm">
+            <div className="font-medium mb-1">Code Generation Error</div>
+            <div>{genError}</div>
+          </div>
         )}
       </div>
       
+      {/* Validation Panel */}
       {(validation.errors.length > 0 || validation.warnings.length > 0) && (
-        <div className="p-4 border-t border-gray-700">
-          {validation.errors.length > 0 && (
-            <div className="mb-4">
-              <h4 className="text-red-400 font-medium mb-2 flex items-center">
-                <FiAlertTriangle className="mr-2" />
-                Validation Errors
-              </h4>
-              <ul className="text-sm text-gray-300 space-y-1">
-                {validation.errors.map((err, i) => (
-                  <li key={i} className="flex items-start">
-                    <span className="text-red-400 mr-2">•</span>
-                    <span>{err}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          
-          {validation.warnings.length > 0 && (
-            <div>
-              <h4 className="text-yellow-400 font-medium mb-2 flex items-center">
-                <FiInfo className="mr-2" />
-                Warnings
-              </h4>
-              <ul className="text-sm text-gray-400 space-y-1">
-                {validation.warnings.map((warn, i) => (
-                  <li key={i} className="flex items-start">
-                    <span className="text-yellow-400 mr-2">•</span>
-                    <span>{warn}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-      
-      {genError && (
-        <div className="p-4 bg-red-900/30 border-t border-red-800 text-red-300 text-sm">
-          <div className="font-medium mb-1">Code Generation Error</div>
-          <div>{genError}</div>
+        <div className="w-80 border-l border-gray-700 flex flex-col">
+          <div className="p-4 border-b border-gray-700">
+            <h3 className="font-medium">Validation</h3>
+          </div>
+          <div className="p-4 overflow-auto">
+            {validation.errors.length > 0 && (
+              <div className="mb-4">
+                <h4 className="text-red-400 font-medium mb-2 flex items-center">
+                  <FiAlertTriangle className="mr-2" />
+                  Validation Errors
+                </h4>
+                <ul className="text-sm text-gray-300 space-y-1">
+                  {validation.errors.map((err, i) => (
+                    <li key={i} className="flex items-start">
+                      <span className="text-red-400 mr-2">•</span>
+                      <span>{err}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            
+            {validation.warnings.length > 0 && (
+              <div>
+                <h4 className="text-yellow-400 font-medium mb-2 flex items-center">
+                  <FiInfo className="mr-2" />
+                  Warnings
+                </h4>
+                <ul className="text-sm text-gray-400 space-y-1">
+                  {validation.warnings.map((warn, i) => (
+                    <li key={i} className="flex items-start">
+                      <span className="text-yellow-400 mr-2">•</span>
+                      <span>{warn}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -414,124 +423,145 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
           </ReactFlow>
         </div>
         <aside className="builder-right">
-          {/* Validation Panel */}
-          {(validation.errors.length > 0 || validation.warnings.length > 0) && (
-            <div className="validation-panel">
-              <div className="validation-title">
-                {isValidating ? 'Validating...' : 'Validation Results'}
-              </div>
-              {validation.errors.length > 0 && (
-                <div className="validation-errors">
-                  {validation.errors.map((error, i) => (
-                    <div key={i} className="validation-item error">{error}</div>
-                  ))}
-                </div>
-              )}
-              {validation.warnings.length > 0 && (
-                <div className="validation-warnings">
-                  {validation.warnings.map((warning, i) => (
-                    <div key={i} className="validation-item warning">{warning}</div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
           <div className="panel-tabs">
-            <button
-              className={"tab" + (activeTab === 'inspector' ? ' active' : '')}
+            <button 
+              className={`tab ${activeTab === 'inspector' ? 'active' : ''}`}
               onClick={() => setActiveTab('inspector')}
-            >Inspector</button>
-            <button
-              className={"tab" + (activeTab === 'chat' ? ' active' : '')}
-              onClick={() => setActiveTab('chat')}
-            >Chat</button>
-            <button
-              className={"tab" + (activeTab === 'code' ? ' active' : '')}
+            >
+              Inspector
+            </button>
+            <button 
+              className={`tab ${activeTab === 'code' ? 'active' : ''}`}
               onClick={() => setActiveTab('code')}
-            >Code</button>
+            >
+              Code
+            </button>
+            <button 
+              className={`tab ${activeTab === 'chat' ? 'active' : ''}`}
+              onClick={() => setActiveTab('chat')}
+            >
+              Chat
+            </button>
           </div>
-          {activeTab === 'inspector' && (
-            <div className="inspector">
-              {!selectedNode && (
-                <div className="empty">Select a node to edit its parameters</div>
-              )}
-              {selectedNode && (
-                <div>
-                  <div className="inspector-title">{selectedNode.data?.label}</div>
-                  <div className="inspector-sub">{selectedNode.data?.type}</div>
-                  <div className="inspector-form">
-                    {(schemas?.[selectedNode.data?.type]?.fields || []).map((field) => (
-                      <div className="form-group" key={field.key}>
-                        <label className="form-label" htmlFor={field.key}>{field.label}</label>
-                        {field.type === 'select' ? (
-                          <select
-                            id={field.key}
-                            className="form-input"
-                            value={selectedNode.data?.params?.[field.key] ?? ''}
-                            onChange={(e) => updateNodeParam(selectedNode.id, field.key, e.target.value, field.type)}
-                          >
-                            {(field.options || []).map((opt) => (
-                              <option key={opt} value={opt}>{opt}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            id={field.key}
-                            className="form-input"
-                            type={field.type === 'number' ? 'number' : 'text'}
-                            step={field.type === 'number' ? 'any' : undefined}
-                            value={selectedNode.data?.params?.[field.key] ?? ''}
-                            onChange={(e) => updateNodeParam(selectedNode.id, field.key, e.target.value, field.type)}
-                          />
-                        )}
+          <div className="flex-1 overflow-hidden flex flex-col">
+            {activeTab === 'inspector' && (
+              <div className="flex-1 overflow-auto">
+                <div className="inspector">
+                  {!selectedNode ? (
+                    <div className="empty">Select a node to edit its parameters</div>
+                  ) : (
+                    <div>
+                      <div className="inspector-title">{selectedNode.data?.label}</div>
+                      <div className="inspector-sub">{selectedNode.data?.type}</div>
+                      <div className="inspector-form">
+                        {(schemas?.[selectedNode.data?.type]?.fields || []).map((field) => (
+                          <div className="form-group" key={field.key}>
+                            <label className="form-label" htmlFor={field.key}>
+                              {field.label}
+                            </label>
+                            {field.type === 'select' ? (
+                              <select
+                                id={field.key}
+                                className="form-input"
+                                value={selectedNode.data?.params?.[field.key] ?? ''}
+                                onChange={(e) =>
+                                  updateNodeParam(selectedNode.id, field.key, e.target.value, field.type)
+                                }
+                              >
+                                {(field.options || []).map((opt) => (
+                                  <option key={opt} value={opt}>
+                                    {opt}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                id={field.key}
+                                className="form-input"
+                                type={field.type === 'number' ? 'number' : 'text'}
+                                step={field.type === 'number' ? 'any' : undefined}
+                                value={selectedNode.data?.params?.[field.key] ?? ''}
+                                onChange={(e) =>
+                                  updateNodeParam(
+                                    selectedNode.id,
+                                    field.key,
+                                    e.target.value,
+                                    field.type
+                                  )
+                                }
+                              />
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          )}
-          {activeTab === 'chat' && (
-            <div className="chat-panel">
-              <div className="chat-messages">
-                {chatMessages.map((m) => (
-                  <div key={m.id} className={"bubble " + m.role}>
-                    {m.content}
-                  </div>
-                ))}
               </div>
-              <div className="chat-input-row">
-                <input
-                  className="chat-input"
-                  placeholder="Ask the builder assistant..."
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') onSendChat(); }}
-                />
-                <button className="builder-btn" onClick={onSendChat}>Send</button>
+            )}
+
+            {activeTab === 'chat' && (
+              <div className="flex-1 flex flex-col">
+                <div className="chat-messages flex-1 overflow-auto">
+                  {chatMessages.map((msg) => (
+                    <div key={msg.id} className={`message ${msg.role}`}>
+                      {msg.content}
+                    </div>
+                  ))}
+                </div>
+                <div className="chat-input-container">
+                  <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && onSendChat()}
+                    placeholder="Type a message..."
+                  />
+                  <button onClick={onSendChat}>Send</button>
+                </div>
               </div>
-            </div>
-          )}
-          {activeTab === 'code' && (
-            renderCodePanel()
-          )}
+            )}
+
+            {activeTab === 'code' && (
+              <div className="code-panel">
+                <div className="code-toolbar">
+                  <button onClick={() => setShowRawCode(!showRawCode)}>
+                    {showRawCode ? 'Show Formatted' : 'Show Raw'}
+                  </button>
+                </div>
+                <div className="code-content">
+                  {showRawCode ? (
+                    <pre>{generatedCode}</pre>
+                  ) : (
+                    <CodeDisplay
+                      code={generatedCode}
+                      language={codeLanguage}
+                      onLanguageChange={setCodeLanguage}
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </aside>
       </div>
-
+      
       {hoverSchema && (
         <div className="hover-card" style={{ top: hoverCard.y, left: hoverCard.x }}>
           <div className="hover-title">{hoverSchema.title ?? hoverCard.type}</div>
           {hoverSchema.description && (
             <div className="hover-desc">{hoverSchema.description}</div>
           )}
-          {(hoverSchema.fields?.length > 0) && (
+          {hoverSchema.fields?.length > 0 && (
             <div className="hover-params">
               <div className="hover-section-title">Parameters</div>
               {hoverSchema.fields.map((f) => (
                 <div key={f.key} className="hover-param-row">
                   <div className="hover-param-name">{f.label}</div>
-                  <div className="hover-param-meta">{f.type}{f.default !== undefined ? ` · default: ${f.default}` : ''}</div>
+                  <div className="hover-param-meta">
+                    {f.type}
+                    {f.default !== undefined ? ` · default: ${f.default}` : ''}
+                  </div>
                   {f.help && <div className="hover-param-help">{f.help}</div>}
                 </div>
               ))}
@@ -541,4 +571,4 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
       )}
     </div>
   );
-} 
+}
