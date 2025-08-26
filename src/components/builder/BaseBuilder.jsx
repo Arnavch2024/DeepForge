@@ -4,9 +4,7 @@ import ReactFlow, {
   Controls,
   addEdge,
   useEdgesState,
-  useNodesState,
-  getIncomers,
-  getOutgoers
+  useNodesState
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { v4 as uuidv4 } from 'uuid';
@@ -65,10 +63,10 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
 
   // Code generation and validation states
   const [generatedCode, setGeneratedCode] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [_isGenerating, setIsGenerating] = useState(false);
   const [genError, setGenError] = useState(null);
   const [validation, setValidation] = useState({ errors: [], warnings: [] });
-  const [isValidating, setIsValidating] = useState(false);
+  const [_isValidating, setIsValidating] = useState(false);
   const [codeLanguage, setCodeLanguage] = useState('python');
   const [showRawCode, setShowRawCode] = useState(false);
 
@@ -188,10 +186,6 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
     setSelectedNodeId(null);
   }, [setNodes, setEdges, saveToStorage]);
 
-  const handleSelectionChange = useCallback(({ nodes: selectedNodes }) => {
-    setSelectedNodeId(selectedNodes?.[0]?.id ?? null);
-  }, []);
-
   const selectedNode = useMemo(
     () => nodes.find((n) => n.id === selectedNodeId) || null,
     [nodes, selectedNodeId]
@@ -241,8 +235,29 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
     setHoverCard({ visible: false, x: 0, y: 0, type: null });
   }, []);
 
+  const onNodeMouseEnter = useCallback((evt, node) => {
+    if (!reactFlowInstance || !node.width) return;
+
+    const nodePos = reactFlowInstance.project({ x: node.position.x, y: node.position.y });
+
+    setHoverCard({
+      visible: true,
+      x: nodePos.x + node.width + 15,
+      y: nodePos.y,
+      type: node.data.type,
+    });
+  }, [reactFlowInstance]);
+
+  const onNodeMouseMove = useCallback((evt) => {
+    moveHover(evt);
+  }, [moveHover]);
+
+  const onNodeMouseLeave = useCallback(() => {
+    hideHover();
+  }, [hideHover]);
+
   // New functions for enhanced features
-  const copyCode = useCallback(() => {
+  const _copyCode = useCallback(() => {
     if (generatedCode) {
       navigator.clipboard.writeText(generatedCode);
       // Could add toast notification here
@@ -275,7 +290,7 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
 
   const hoverSchema = hoverCard.visible && hoverCard.type ? schemas?.[hoverCard.type] : null;
 
-  const renderCodePanel = () => (
+  const _renderCodePanel = () => (
     <div className="flex h-full overflow-hidden">
       {/* Code Panel */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -417,6 +432,9 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
             onDrop={onDrop}
             onDragOver={onDragOver}
             onSelectionChange={onSelectionChange}
+            onNodeMouseEnter={onNodeMouseEnter}
+            onNodeMouseMove={onNodeMouseMove}
+            onNodeMouseLeave={onNodeMouseLeave}
           >
             <Background />
             <Controls />
@@ -501,45 +519,56 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
             )}
 
             {activeTab === 'chat' && (
-              <div className="flex-1 flex flex-col">
-                <div className="chat-messages flex-1 overflow-auto">
+              <div className="chat-panel">
+                <div className="chat-messages">
                   {chatMessages.map((msg) => (
-                    <div key={msg.id} className={`message ${msg.role}`}>
+                    <div key={msg.id} className={`bubble ${msg.role}`}>
                       {msg.content}
                     </div>
                   ))}
                 </div>
-                <div className="chat-input-container">
+                <div className="chat-input-row">
                   <input
+                    className="chat-input"
                     type="text"
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && onSendChat()}
                     placeholder="Type a message..."
                   />
-                  <button onClick={onSendChat}>Send</button>
+                  <button onClick={onSendChat} className="builder-btn">Send</button>
                 </div>
               </div>
             )}
 
             {activeTab === 'code' && (
               <div className="code-panel">
-                <div className="code-toolbar">
-                  <button onClick={() => setShowRawCode(!showRawCode)}>
-                    {showRawCode ? 'Show Formatted' : 'Show Raw'}
-                  </button>
+                <div className="code-header">
+                  <div className="code-title">Generated Code</div>
+                  <div className="flex space-x-2">
+                    <button onClick={() => setShowRawCode(!showRawCode)} className="builder-btn code-show-raw-btn">
+                      {showRawCode ? 'Formatted' : 'Raw'}
+                    </button>
+                    <button onClick={_copyCode} className="code-copy-btn">
+                      <TbCopy /> Copy
+                    </button>
+                  </div>
                 </div>
                 <div className="code-content">
                   {showRawCode ? (
-                    <pre>{generatedCode}</pre>
+                    <pre className="code-pre">{generatedCode}</pre>
                   ) : (
                     <CodeDisplay
                       code={generatedCode}
                       language={codeLanguage}
-                      onLanguageChange={setCodeLanguage}
                     />
                   )}
                 </div>
+                {genError && (
+                  <div className="code-error">
+                    {genError}
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -177,6 +177,8 @@ def validate_cnn_graph(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]])
     
     # Check for required nodes
     node_types = [_n_type(n) for n in nodes]
+    if 'dataset' not in node_types:
+        errors.append("CNN must have a Dataset component")
     if 'inputImage' not in node_types:
         errors.append("CNN must have exactly one input layer")
     if 'output' not in node_types:
@@ -298,6 +300,31 @@ def validate_cnn_graph(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]])
                 errors.append(f"Output classes must be positive, got {classes}")
             if classes > 1000:
                 warnings.append(f"Very large number of classes ({classes}) may require more training data")
+        elif node_type == 'dataset':
+            train_split = params.get('train_split', 0)
+            validation_split = params.get('validation_split', 0)
+            test_split = params.get('test_split', 0)
+            if train_split + validation_split + test_split != 100:
+                errors.append("The sum of train, validation, and test splits must be 100")
+            if params.get('batch_size', 0) <= 0:
+                errors.append("Batch size must be a positive number")
+        elif node_type == 'randomFlip':
+            mode = params.get('mode', 'horizontal')
+            if mode not in ['horizontal', 'vertical', 'horizontal_and_vertical']:
+                errors.append(f"Invalid flip mode: {mode}")
+        elif node_type == 'randomRotation':
+            factor = params.get('factor', 0.0)
+            if not isinstance(factor, (int, float)):
+                errors.append("Rotation factor must be a number")
+        elif node_type == 'randomZoom':
+            height_factor = params.get('height_factor', 0.0)
+            width_factor = params.get('width_factor', 0.0)
+            if not isinstance(height_factor, (int, float)) or not isinstance(width_factor, (int, float)):
+                errors.append("Zoom factors must be numbers")
+        elif node_type == 'randomContrast':
+            factor = params.get('factor', 0.0)
+            if not isinstance(factor, (int, float)):
+                errors.append("Contrast factor must be a number")
 	
     # Check for reasonable layer counts
     if len(conv_layers) > 10:
@@ -636,38 +663,19 @@ def generate_cnn_code(graph):
     edges = graph.get('edges') or []
     ordered = topological_order(nodes, edges)
 
-    # Defaults
-    in_w, in_h, in_c = 224, 224, 3
-    batch_size = 32
-    use_data_augmentation = False
-    data_augmentation_params = {}
-    
-    # Find input node and collect parameters
-    input_node = None
+    # Find dataset and input parameters
+    dataset_params = {}
+    input_params = {}
     for n in ordered:
-        t = _n_type(n)
-        p = _n_params(n)
-        if t == 'inputImage':
-            input_node = n
-            in_w = int(p.get('width') or in_w)
-            in_h = int(p.get('height') or in_h)
-            in_c = int(p.get('channels') or in_c)
-            batch_size = int(p.get('batch_size') or batch_size)
-            use_data_augmentation = p.get('use_data_augmentation', False)
-            if use_data_augmentation:
-                data_augmentation_params = {
-                    'rotation_range': int(p.get('rotation_range', 20)),
-                    'width_shift_range': float(p.get('width_shift_range', 0.2)),
-                    'height_shift_range': float(p.get('height_shift_range', 0.2)),
-                    'horizontal_flip': p.get('horizontal_flip', True),
-                    'vertical_flip': p.get('vertical_flip', False),
-                    'brightness_range': p.get('brightness_range', None),
-                    'zoom_range': float(p.get('zoom_range', 0.2)),
-                    'fill_mode': p.get('fill_mode', 'nearest'),
-                    'shear_range': float(p.get('shear_range', 0.0)),
-                    'channel_shift_range': float(p.get('channel_shift_range', 0.0))
-                }
-            break
+        if _n_type(n) == 'dataset':
+            dataset_params = _n_params(n)
+        if _n_type(n) == 'inputImage':
+            input_params = _n_params(n)
+
+    in_w = int(input_params.get('width', 224))
+    in_h = int(input_params.get('height', 224))
+    in_c = int(input_params.get('channels', 3))
+    batch_size = int(dataset_params.get('batch_size', 32))
 
     # Initialize code lines
     lines: List[str] = []
@@ -681,63 +689,34 @@ def generate_cnn_code(graph):
     lines.append('import matplotlib.pyplot as plt')
     lines.append('')
 	
-    # Add data augmentation if enabled
-    if use_data_augmentation:
+    data_augmentation_layers = []
+    for n in ordered:
+        if _n_type(n) == 'randomFlip':
+            mode = _n_params(n).get('mode', 'horizontal')
+            data_augmentation_layers.append(f"layers.RandomFlip('{mode}')")
+        elif _n_type(n) == 'randomRotation':
+            factor = _n_params(n).get('factor', 0.2)
+            data_augmentation_layers.append(f"layers.RandomRotation({factor})")
+        elif _n_type(n) == 'randomZoom':
+            height_factor = _n_params(n).get('height_factor', 0.2)
+            width_factor = _n_params(n).get('width_factor', 0.2)
+            data_augmentation_layers.append(f"layers.RandomZoom(height_factor={height_factor}, width_factor={width_factor})")
+        elif _n_type(n) == 'randomContrast':
+            factor = _n_params(n).get('factor', 0.2)
+            data_augmentation_layers.append(f"layers.RandomContrast({factor})")
+
+    if data_augmentation_layers:
         lines.append('# Data Augmentation')
         lines.append('data_augmentation = Sequential([')
-        
-        # Add rotation if specified and valid
-        rotation = data_augmentation_params.get("rotation_range", 0)
-        if rotation and isinstance(rotation, (int, float)) and rotation > 0:
-            lines.append(f'    layers.RandomRotation({rotation}/360),')
-        
-        # Add width and height shift if specified and valid
-        width_shift = data_augmentation_params.get("width_shift_range", 0)
-        height_shift = data_augmentation_params.get("height_shift_range", 0)
-        if (isinstance(width_shift, (int, float)) and width_shift > 0) or \
-           (isinstance(height_shift, (int, float)) and height_shift > 0):
-            width_shift = max(0, min(float(width_shift), 1.0))  # Ensure between 0 and 1
-            height_shift = max(0, min(float(height_shift), 1.0))  # Ensure between 0 and 1
-            lines.append(f'    layers.RandomTranslation({height_shift}, {width_shift}),')
-        
-        # Add zoom if specified and valid
-        zoom = data_augmentation_params.get("zoom_range", 0)
-        if zoom and isinstance(zoom, (int, float)) and zoom > 0:
-            zoom = max(0, min(float(zoom), 1.0))  # Ensure between 0 and 1
-            lines.append(f'    layers.RandomZoom({zoom}),')
-        
-        # Add flips if specified
-        if data_augmentation_params.get("horizontal_flip"):
-            lines.append('    layers.RandomFlip("horizontal"),')
-        if data_augmentation_params.get("vertical_flip"):
-            lines.append('    layers.RandomFlip("vertical"),')
-        
-        # Add brightness adjustment if specified and valid
-        brightness = data_augmentation_params.get("brightness_range")
-        if brightness and isinstance(brightness, (list, tuple)) and len(brightness) == 2:
-            try:
-                lower = float(brightness[0])
-                upper = float(brightness[1])
-                if lower < upper:
-                    lines.append(f'    layers.RandomBrightness(({lower}, {upper})),')
-            except (ValueError, TypeError):
-                pass  # Skip invalid brightness values
-        
-        # Always add normalization
+        for layer in data_augmentation_layers:
+            lines.append(f'    {layer},')
         lines.append('    layers.Rescaling(1./255)')
-        
         lines.append('])\n')
     else:
         # Basic preprocessing with just normalization
         lines.append('# Input preprocessing')
         lines.append('preprocessing = Sequential([')
         lines.append('    layers.Rescaling(1./255)')
-        
-        # Add normalization if specified
-        input_node = next((n for n in ordered if _n_type(n) == 'inputImage'), None)
-        if input_node and _n_params(input_node).get('normalization', False):
-            lines.append('    layers.Normalization(mean=0.0, variance=1.0)')
-            
         lines.append('])\n')
 
     # Check if this is a pre-trained model
@@ -1077,27 +1056,46 @@ epochs = 50
 batch_size = ''' + str(batch_size) + '''
 
 # Example training code (uncomment and modify as needed)
-''')
-    
-    lines.append('''
-# Example of loading and preprocessing data
+
+# --- Dataset Loading ---
+dataset_name = dataset_params.get('name', 'CIFAR-10')
+custom_path = dataset_params.get('custom_path', '')
+val_split = dataset_params.get('validation_split', 20) / 100.0
+
+lines.append(f'# Dataset: {dataset_name}')
+if dataset_name == 'Custom':
+    lines.append(f'# Make sure to set the correct path to your dataset')
+    lines.append(f"DATASET_PATH = '{custom_path}'")
+else:
+    lines.append(f'# Using the {dataset_name} dataset')
+    lines.append(f'# (Not implemented: code to automatically download and load {dataset_name})')
+    lines.append(f"DATASET_PATH = 'path/to/{dataset_name.lower()}' # Please update this path")
+
+lines.append(f"""
+# The following code splits the data from DATASET_PATH into training and validation sets.
+# It assumes that DATASET_PATH points to a directory with subdirectories for each class.
+# You might need to adjust this logic if your dataset is structured differently,
+# or if you have a separate directory for the test set.
+
 # train_ds = tf.keras.utils.image_dataset_from_directory(
-#     'path/to/train',
-#     validation_split=0.2,
+#     DATASET_PATH,
+#     validation_split={val_split},
 #     subset="training",
-#     seed=42,
-#     image_size=(''' + str(in_h) + ', ' + str(in_w) + '''),
-#     batch_size=''' + str(batch_size) + '''
-# )
-# 
+#     seed=123,
+#     image_size=({in_h}, {in_w}),
+#     batch_size={batch_size})
+
 # val_ds = tf.keras.utils.image_dataset_from_directory(
-#     'path/to/val',
-#     validation_split=0.2,
+#     DATASET_PATH,
+#     validation_split={val_split},
 #     subset="validation",
-#     seed=42,
-#     image_size=(''' + str(in_h) + ', ' + str(in_w) + '''),
-#     batch_size=''' + str(batch_size) + '''
-# )
+#     seed=123,
+#     image_size=({in_h}, {in_w}),
+#     batch_size={batch_size})
+""")
+
+    lines.append('''
+# --- Model Training ---
 # 
 # # Train the model
 # history = model.fit(

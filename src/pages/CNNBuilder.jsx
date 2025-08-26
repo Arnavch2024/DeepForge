@@ -2,7 +2,12 @@ import React from 'react';
 import BaseBuilder from '../components/builder/BaseBuilder.jsx';
 
 const cnnPalette = [
+  { type: 'dataset', label: 'Dataset' },
   { type: 'inputImage', label: 'Input Image' },
+  { type: 'randomFlip', label: 'Random Flip' },
+  { type: 'randomRotation', label: 'Random Rotation' },
+  { type: 'randomZoom', label: 'Random Zoom' },
+  { type: 'randomContrast', label: 'Random Contrast' },
   { type: 'conv2d', label: 'Conv2D' },
   { type: 'maxpool', label: 'MaxPool' },
   { type: 'batchnorm', label: 'BatchNorm' },
@@ -14,6 +19,18 @@ const cnnPalette = [
 ];
 
 const cnnSchemas = {
+  dataset: {
+    title: 'Dataset',
+    description: 'Defines the dataset to be used for training and evaluation. Specify the dataset name and the split percentages for training, validation, and testing.',
+    fields: [
+      { key: 'name', label: 'Dataset Name', type: 'select', options: ['CIFAR-10', 'MNIST', 'ImageNet', 'Custom'], default: 'CIFAR-10', help: 'Select a standard dataset or choose "Custom" to specify a path.' },
+      { key: 'custom_path', label: 'Custom Dataset Path', type: 'text', default: '', help: 'If "Custom" is selected, provide the path to your dataset.' },
+      { key: 'train_split', label: 'Train Split (%)', type: 'number', default: 80, help: 'Percentage of data to use for training.' },
+      { key: 'validation_split', label: 'Validation Split (%)', type: 'number', default: 10, help: 'Percentage of data to use for validation.' },
+      { key: 'test_split', label: 'Test Split (%)', type: 'number', default: 10, help: 'Percentage of data to use for testing.' },
+      { key: 'batch_size', label: 'Batch Size', type: 'number', default: 32, help: 'Number of samples per gradient update.' },
+    ]
+  },
   inputImage: {
     title: 'Image Input',
     description: 'Start here. This defines the shape of images fed into the network. A common choice is 224×224×3 (width × height × channels) for RGB images. If your data is grayscale, channels is 1. Normalization (e.g., scaling pixel values to 0–1) is typically done in preprocessing.',
@@ -21,6 +38,35 @@ const cnnSchemas = {
       { key: 'width', label: 'Width', type: 'number', default: 224, help: 'Horizontal size in pixels. Typical values: 32–512 depending on your dataset.' },
       { key: 'height', label: 'Height', type: 'number', default: 224, help: 'Vertical size in pixels. Keep aspect ratio consistent with Width.' },
       { key: 'channels', label: 'Channels', type: 'number', default: 3, help: 'Color channels (3 = RGB, 1 = grayscale). Must match your data.' },
+    ]
+  },
+  randomFlip: {
+    title: 'Random Flip',
+    description: 'Randomly flips images horizontally or vertically during training to augment the dataset. This helps the model become invariant to object orientation.',
+    fields: [
+      { key: 'mode', label: 'Mode', type: 'select', options: ['horizontal', 'vertical', 'horizontal_and_vertical'], default: 'horizontal', help: 'The direction of flipping.' },
+    ]
+  },
+  randomRotation: {
+    title: 'Random Rotation',
+    description: 'Randomly rotates images by a certain amount during training. This helps the model become invariant to object rotation.',
+    fields: [
+      { key: 'factor', label: 'Factor', type: 'number', default: 0.2, help: 'A float represented as fraction of 2*pi. For example, 0.1 results in a random rotation in the range [-20% * 2*pi, 20% * 2*pi].' },
+    ]
+  },
+  randomZoom: {
+    title: 'Random Zoom',
+    description: 'Randomly zooms images in or out during training. This helps the model learn features at different scales.',
+    fields: [
+      { key: 'height_factor', label: 'Height Factor', type: 'number', default: 0.2, help: 'A float represented as a fraction of the image height. e.g., 0.2 means zoom in/out by up to 20%.' },
+      { key: 'width_factor', label: 'Width Factor', type: 'number', default: 0.2, help: 'A float represented as a fraction of the image width. e.g., 0.2 means zoom in/out by up to 20%.' },
+    ]
+  },
+  randomContrast: {
+    title: 'Random Contrast',
+    description: 'Randomly adjusts the contrast of images during training. This helps the model become robust to lighting and color variations.',
+    fields: [
+      { key: 'factor', label: 'Factor', type: 'number', default: 0.2, help: 'A float representing the contrast adjustment range. e.g., 0.2 means adjust contrast by a random factor in [1-0.2, 1+0.2].' },
     ]
   },
   conv2d: {

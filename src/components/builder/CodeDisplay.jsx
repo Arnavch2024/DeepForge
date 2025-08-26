@@ -1,17 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Prism as SyntaxHighlighter } from 'prism-react-renderer';
-import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { FaCopy, FaCheck } from 'react-icons/fa';
 
 const CodeDisplay = ({ code, language = 'python', className = '' }) => {
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    if (copied) {
-      const timer = setTimeout(() => setCopied(false), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [copied]);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   if (!code) {
     return (
@@ -32,24 +31,23 @@ const CodeDisplay = ({ code, language = 'python', className = '' }) => {
         <div className="text-sm text-gray-300">
           {language.toUpperCase()}
         </div>
-        <CopyToClipboard text={code} onCopy={() => setCopied(true)}>
-          <button 
-            className="flex items-center space-x-1 text-sm text-gray-300 hover:text-white transition-colors"
-            title="Copy to clipboard"
-          >
-            {copied ? (
-              <>
-                <FaCheck className="text-green-400" />
-                <span>Copied!</span>
-              </>
-            ) : (
-              <>
-                <FaCopy />
-                <span>Copy</span>
-              </>
-            )}
-          </button>
-        </CopyToClipboard>
+        <button
+          onClick={handleCopy}
+          className="flex items-center space-x-1 text-sm text-gray-300 hover:text-white transition-colors"
+          title="Copy to clipboard"
+        >
+          {copied ? (
+            <>
+              <FaCheck className="text-green-400" />
+              <span>Copied!</span>
+            </>
+          ) : (
+            <>
+              <FaCopy />
+              <span>Copy</span>
+            </>
+          )}
+        </button>
       </div>
       <div className="overflow-auto max-h-[500px] p-4">
         <pre className="text-sm leading-relaxed">
