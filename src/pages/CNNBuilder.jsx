@@ -2,6 +2,7 @@ import React from 'react';
 import BaseBuilder from '../components/builder/BaseBuilder.jsx';
 
 const cnnPalette = [
+  { type: 'dataset', label: 'Dataset' },
   { type: 'inputImage', label: 'Input Image' },
   { type: 'randomFlip', label: 'Random Flip' },
   { type: 'randomRotation', label: 'Random Rotation' },
@@ -18,6 +19,18 @@ const cnnPalette = [
 ];
 
 const cnnSchemas = {
+  dataset: {
+    title: 'Dataset',
+    description: 'Defines the dataset to be used for training and evaluation. Specify the dataset name and the split percentages for training, validation, and testing.',
+    fields: [
+      { key: 'name', label: 'Dataset Name', type: 'select', options: ['CIFAR-10', 'MNIST', 'ImageNet', 'Custom'], default: 'CIFAR-10', help: 'Select a standard dataset or choose "Custom" to specify a path.' },
+      { key: 'custom_path', label: 'Custom Dataset Path', type: 'text', default: '', help: 'If "Custom" is selected, provide the path to your dataset.' },
+      { key: 'train_split', label: 'Train Split (%)', type: 'number', default: 80, help: 'Percentage of data to use for training.' },
+      { key: 'validation_split', label: 'Validation Split (%)', type: 'number', default: 10, help: 'Percentage of data to use for validation.' },
+      { key: 'test_split', label: 'Test Split (%)', type: 'number', default: 10, help: 'Percentage of data to use for testing.' },
+      { key: 'batch_size', label: 'Batch Size', type: 'number', default: 32, help: 'Number of samples per gradient update.' },
+    ]
+  },
   inputImage: {
     title: 'Image Input',
     description: 'Start here. This defines the shape of images fed into the network. A common choice is 224×224×3 (width × height × channels) for RGB images. If your data is grayscale, channels is 1. Normalization (e.g., scaling pixel values to 0–1) is typically done in preprocessing.',
