@@ -228,6 +228,10 @@
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
 }
 
+.code-show-raw-btn {
+  background: #4a5568;
+}
+
 .code-content {
   flex: 1;
   overflow: auto;
