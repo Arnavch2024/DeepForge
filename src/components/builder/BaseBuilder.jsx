@@ -78,7 +78,7 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
 
   // Debounced API calls for live code generation
   useEffect(() => {
-    if (!builderType || (nodes.length === 0 && edges.length === 0)) {
+    if (!builderType || nodes.length === 0) {
       setGeneratedCode('');
       setValidation({ errors: [], warnings: [] });
       return;
@@ -96,16 +96,23 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             builder_type: builderType,
-            nodes,
-            edges
+            graph: { nodes, edges }
           })
         });
 
+        if (!validationResponse.ok) {
+          console.error('Validation request failed:', validationResponse.status);
+          setValidation({ errors: ['Validation request failed'], warnings: [] });
+          return;
+        }
+
         const validationData = await validationResponse.json();
-        setValidation(validationData);
+        setValidation(validationData || { errors: [], warnings: [] });
 
         if (validationData.errors && validationData.errors.length > 0) {
-          throw new Error('Validation failed');
+          console.log('Validation errors found:', validationData.errors);
+          setGeneratedCode('');
+          return;
         }
 
         // If validation passes, generate code
@@ -119,10 +126,16 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
         });
 
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+          const errorText = await response.text();
+          console.error('Code generation failed:', response.status, errorText);
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
 
         const data = await response.json();
+        if (data.success === false) {
+          throw new Error(data.error || 'Code generation failed');
+        }
+        
         setGeneratedCode(data.code || '');
         setCodeLanguage(data.language || 'python');
       } catch (error) {
@@ -238,7 +251,7 @@ export default function BaseBuilder({ title, palette, storageKey, schemas, build
   const onNodeMouseEnter = useCallback((evt, node) => {
     if (!reactFlowInstance || !node.width) return;
 
-    const nodePos = reactFlowInstance.project({ x: node.position.x, y: node.position.y });
+    const nodePos = reactFlowInstance.screenToFlowPosition({ x: node.position.x, y: node.position.y });
 
     setHoverCard({
       visible: true,

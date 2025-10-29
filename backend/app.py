@@ -144,7 +144,7 @@ def auth_required(fn):
 	return wrapper
 
 # Simple health check
-@app.get('/health')
+@app.route('/health', methods=['GET'])
 def health():
 	return jsonify({"status": "ok"})
 
@@ -374,12 +374,18 @@ def validate_rag_graph(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]])
 		errors.append("No nodes found in the graph")
 		return errors
 	
-	# Check for required nodes
+	# Check for required nodes (more flexible - only require core components)
 	node_types = [_n_type(n) for n in nodes]
-	required = ['inputDocs', 'embed', 'chunk', 'vectorstore', 'retriever', 'llm']
-	missing = [req for req in required if req not in node_types]
-	if missing:
-		errors.append(f"RAG pipeline missing required components: {', '.join(missing)}")
+	core_required = ['inputDocs', 'llm']  # Only require input and LLM as minimum
+	missing_core = [req for req in core_required if req not in node_types]
+	if missing_core:
+		errors.append(f"RAG pipeline must have at least: {', '.join(missing_core)}")
+	
+	# Warn about missing recommended components
+	recommended = ['embed', 'chunk', 'vectorstore', 'retriever']
+	missing_recommended = [req for req in recommended if req not in node_types]
+	if missing_recommended:
+		warnings.append(f"Consider adding these components for a complete RAG pipeline: {', '.join(missing_recommended)}")
 	
 	# Check for multiple instances of single components
 	single_components = ['inputDocs', 'embed', 'chunk', 'vectorstore']
@@ -409,27 +415,27 @@ def validate_rag_graph(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]])
 				if target_node:
 					target_type = _n_type(target_node)
 					
-					# Invalid sequences
-					if node_type == 'inputDocs' and target_type not in ['chunk']:
-						errors.append(f"Input Docs should connect to Chunker, not {target_type}")
+					# Connection recommendations (warnings instead of errors for flexibility)
+					if node_type == 'inputDocs' and target_type not in ['chunk', 'embed', 'llm']:
+						warnings.append(f"Input Docs typically connects to Chunker, but connecting to {target_type}")
 					
 					if node_type == 'chunk' and target_type not in ['embed']:
-						errors.append(f"Chunker should connect to Embedder, not {target_type}")
+						warnings.append(f"Chunker typically connects to Embedder, but connecting to {target_type}")
 					
 					if node_type == 'embed' and target_type not in ['vectorstore']:
-						errors.append(f"Embedder should connect to Vector Store, not {target_type}")
+						warnings.append(f"Embedder typically connects to Vector Store, but connecting to {target_type}")
 					
 					if node_type == 'vectorstore' and target_type not in ['retriever']:
-						errors.append(f"Vector Store should connect to Retriever, not {target_type}")
+						warnings.append(f"Vector Store typically connects to Retriever, but connecting to {target_type}")
 					
 					if node_type == 'retriever' and target_type not in ['reranker', 'llm']:
-						errors.append(f"Retriever should connect to Reranker or LLM, not {target_type}")
+						warnings.append(f"Retriever typically connects to Reranker or LLM, but connecting to {target_type}")
 					
 					if node_type == 'reranker' and target_type not in ['llm']:
-						errors.append(f"Reranker should connect to LLM, not {target_type}")
+						warnings.append(f"Reranker should connect to LLM, but connecting to {target_type}")
 					
 					if node_type == 'llm' and target_type not in ['output']:
-						errors.append(f"LLM should connect to Output, not {target_type}")
+						warnings.append(f"LLM typically connects to Output, but connecting to {target_type}")
 					
 					if node_type == 'output' and target_type != 'output':
 						errors.append(f"Output component cannot have outgoing connections to {target_type}")
@@ -457,15 +463,15 @@ def validate_rag_graph(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]])
 			if source_type == 'retriever' and target_type == 'llm':
 				has_retriever_to_llm = True
 	
-	# Validate essential connections
-	if not has_chunk_to_embed:
-		errors.append("Chunker must connect to Embedder for document processing")
-	if not has_embed_to_store:
-		errors.append("Embedder must connect to Vector Store for storage")
-	if not has_store_to_retriever:
-		errors.append("Vector Store must connect to Retriever for search")
-	if not has_retriever_to_llm:
-		errors.append("Retriever must connect to LLM for answer generation")
+	# Validate essential connections (only if components exist)
+	if 'chunk' in node_types and 'embed' in node_types and not has_chunk_to_embed:
+		warnings.append("Chunker should connect to Embedder for document processing")
+	if 'embed' in node_types and 'vectorstore' in node_types and not has_embed_to_store:
+		warnings.append("Embedder should connect to Vector Store for storage")
+	if 'vectorstore' in node_types and 'retriever' in node_types and not has_store_to_retriever:
+		warnings.append("Vector Store should connect to Retriever for search")
+	if 'retriever' in node_types and 'llm' in node_types and not has_retriever_to_llm:
+		warnings.append("Retriever should connect to LLM for answer generation")
 	
 	# Check for reranker placement
 	reranker_nodes = [n for n in nodes if _n_type(n) == 'reranker']
@@ -508,31 +514,31 @@ def validate_rag_graph(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]])
 		params = _n_params(node)
 		
 		if node_type == 'chunk':
-			chunk_size = params.get('chunkSize', 0)
-			overlap = params.get('overlap', 0)
+			chunk_size = params.get('chunkSize', 800)  # Use proper default
+			overlap = params.get('overlap', 100)  # Use proper default
 			
 			if chunk_size <= 0:
-				errors.append(f"Chunk size must be positive, got {chunk_size}")
+				warnings.append(f"Chunk size should be positive, got {chunk_size} - using default 800")
 			if chunk_size > 2000:
 				warnings.append(f"Very large chunk size ({chunk_size}) may reduce retrieval precision")
 			if overlap < 0:
-				errors.append(f"Overlap cannot be negative, got {overlap}")
-			if overlap >= chunk_size:
-				errors.append(f"Overlap ({overlap}) must be less than chunk size ({chunk_size})")
-			if overlap > chunk_size * 0.5:
+				warnings.append(f"Overlap cannot be negative, got {overlap} - using default 100")
+			if chunk_size > 0 and overlap >= chunk_size:
+				warnings.append(f"Overlap ({overlap}) should be less than chunk size ({chunk_size})")
+			if chunk_size > 0 and overlap > chunk_size * 0.5:
 				warnings.append(f"High overlap ({overlap}) may create redundant chunks")
 		
 		elif node_type == 'embed':
-			dim = params.get('dim', 0)
+			dim = params.get('dim', 768)  # Use proper default
 			if dim <= 0:
-				errors.append(f"Embedding dimension must be positive, got {dim}")
+				warnings.append(f"Embedding dimension should be positive, got {dim} - using default 768")
 			if dim > 4096:
 				warnings.append(f"Very high embedding dimension ({dim}) may cause performance issues")
 		
 		elif node_type == 'retriever':
-			top_k = params.get('topK', 0)
+			top_k = params.get('topK', 5)  # Use proper default
 			if top_k <= 0:
-				errors.append(f"Top-K must be positive, got {top_k}")
+				warnings.append(f"Top-K should be positive, got {top_k} - using default 5")
 			if top_k > 50:
 				warnings.append(f"Very high Top-K ({top_k}) may slow down the pipeline")
 		
@@ -705,6 +711,9 @@ def generate_cnn_code(graph):
             factor = _n_params(n).get('factor', 0.2)
             data_augmentation_layers.append(f"layers.RandomContrast({factor})")
 
+    # Determine if we have data augmentation
+    use_data_augmentation = len(data_augmentation_layers) > 0
+    
     if data_augmentation_layers:
         lines.append('# Data Augmentation')
         lines.append('data_augmentation = Sequential([')
@@ -791,7 +800,7 @@ def generate_cnn_code(graph):
                     
                     # Build the layer string with optional parameters
                     layer_str = f"layers.Dense({units}, activation='{activation}'"
-                    layer_str += f", use_bias={str(use_bias).lower()}"
+                    layer_str += f", use_bias={use_bias}"
                     layer_str += f", kernel_initializer='{kernel_initializer}'"
                     
                     if kernel_regularizer:
@@ -883,7 +892,7 @@ def generate_cnn_code(graph):
                 # Build the layer string with optional parameters
                 layer_str = f"layers.Conv2D({filters}, {kernel}, strides={stride}, padding='{padding}'"
                 layer_str += f", activation='{activation}'"
-                layer_str += f", use_bias={str(use_bias).lower()}"
+                layer_str += f", use_bias={use_bias}"
                 layer_str += f", kernel_initializer='{kernel_initializer}'"
                 
                 if kernel_regularizer:
@@ -938,7 +947,7 @@ def generate_cnn_code(graph):
                 
                 # Build the layer string with optional parameters
                 layer_str = f"layers.Dense({units}, activation='{activation}'"
-                layer_str += f", use_bias={str(use_bias).lower()}"
+                layer_str += f", use_bias={use_bias}"
                 layer_str += f", kernel_initializer='{kernel_initializer}'"
                 
                 if kernel_regularizer:
@@ -1241,7 +1250,7 @@ def generate_rag_code(graph):
 
 
 
-@app.post('/validate')
+@app.route('/validate', methods=['POST'])
 def validate():
 	data = request.get_json(force=True)
 	graph = data.get('graph')
@@ -1261,7 +1270,7 @@ def validate():
 # Auth Endpoints (signup/login)
 # -------------------------------
 
-@app.post('/signup')
+@app.route('/signup', methods=['POST'])
 def signup():
 	data = request.get_json(force=True)
 	username = (data.get('username') or '').strip()
@@ -1292,7 +1301,7 @@ def signup():
 		return jsonify({"error": str(e)}), 500
 
 
-@app.post('/login')
+@app.route('/login', methods=['POST'])
 def login():
 	data = request.get_json(force=True)
 	email = (data.get('email') or '').strip().lower()
@@ -1322,7 +1331,7 @@ def login():
 # Subscriptions
 # -------------------------------
 
-@app.get('/subscriptions')
+@app.route('/subscriptions', methods=['GET'])
 def list_subscriptions():
 	try:
 		with get_db_connection() as conn:
@@ -1731,7 +1740,7 @@ def chat_rag():
 # Users CRUD (self only)
 # -------------------------------
 
-@app.get('/users/me')
+@app.route('/users/me', methods=['GET'])
 @auth_required
 def get_me():
 	return jsonify({"user": request.user})
@@ -1798,7 +1807,7 @@ def format_code_with_black(code_str: str) -> str:
     except ImportError:
         return code_str
 
-@app.post('/generate')
+@app.route('/generate', methods=['POST'])
 def generate():
     try:
         print("\n=== New Code Generation Request ===")
@@ -1825,9 +1834,12 @@ def generate():
         
         # Return early if there are validation errors
         if validation.get('errors'):
-            return {
-                "errors": [], "warnings": [], "info": ["this is a dummy validation"]
-            }
+            return jsonify({
+                "success": False,
+                "error": "Validation failed",
+                "validation": validation,
+                "code": ""
+            }), 400
         
         # Generate code based on builder type
         try:
@@ -1911,7 +1923,7 @@ def generate():
         }), 500
 
 
-@app.post('/run')
+@app.route('/run', methods=['POST'])
 def run_code():
     try:
         data = request.get_json(force=True)

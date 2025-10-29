@@ -335,3 +335,30 @@
 .theme-light .builder-select:focus {
   border-color: #3b82f6;
 }
+
+/* Code Display Dark Theme Override */
+.code-display-container {
+  background-color: #111827 !important;
+}
+
+.code-display-container * {
+  background-color: transparent !important;
+}
+
+.code-display-container pre {
+  background-color: #111827 !important;
+  color: #e2e8f0 !important;
+}
+
+.code-display-container .token-line {
+  background-color: transparent !important;
+}
+
+/* Ensure prism theme doesn't override our dark background */
+.prism-code {
+  background-color: #111827 !important;
+}
+
+.prism-code * {
+  background-color: transparent !important;
+}
