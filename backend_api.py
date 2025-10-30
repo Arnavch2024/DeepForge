@@ -178,31 +178,38 @@ def get_dataset_stats():
     
     return jsonify(stats)
 
-@app.route('/api/visualizations/gpu_comparison', methods=['GET'])
-def gpu_comparison_chart():
-    """Generate GPU comparison chart as base64 image"""
+@app.route('/api/visualizations/gpu_efficiency', methods=['GET'])
+def gpu_efficiency_chart():
+    """Generate GPU efficiency comparison for similar model sizes"""
     try:
-        # Create GPU comparison chart
-        plt.figure(figsize=(12, 6))
+        # Filter for similar model sizes (100M ± 30M parameters) for fair comparison
+        similar_models = dataset[
+            (dataset['Model_Parameters'] >= 70e6) & 
+            (dataset['Model_Parameters'] <= 130e6)
+        ]
         
-        gpu_stats = dataset.groupby('GPU_Type').agg({
+        if len(similar_models) == 0:
+            return jsonify({'error': 'No similar model sizes found for comparison'}), 400
+        
+        gpu_efficiency = similar_models.groupby('GPU_Type').agg({
             'CO2_kg': 'mean',
             'Energy_kWh': 'mean',
-            'Training_Hours': 'mean'
+            'Training_Hours': 'mean',
+            'Model_Parameters': 'mean'
         }).round(3)
         
         # Create subplot
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
         
-        # CO2 emissions by GPU
-        gpu_stats['CO2_kg'].plot(kind='bar', ax=ax1, color='skyblue')
-        ax1.set_title('Average CO2 Emissions by GPU Type')
+        # CO2 efficiency by GPU (same workload)
+        gpu_efficiency['CO2_kg'].plot(kind='bar', ax=ax1, color='lightgreen')
+        ax1.set_title('GPU Efficiency: CO2 Emissions\n(Similar Model Size ~100M params)')
         ax1.set_ylabel('CO2 (kg)')
         ax1.tick_params(axis='x', rotation=45)
         
-        # Energy consumption by GPU
-        gpu_stats['Energy_kWh'].plot(kind='bar', ax=ax2, color='lightcoral')
-        ax2.set_title('Average Energy Consumption by GPU Type')
+        # Energy efficiency by GPU
+        gpu_efficiency['Energy_kWh'].plot(kind='bar', ax=ax2, color='lightcoral')
+        ax2.set_title('GPU Efficiency: Energy Consumption\n(Similar Model Size ~100M params)')
         ax2.set_ylabel('Energy (kWh)')
         ax2.tick_params(axis='x', rotation=45)
         
@@ -220,7 +227,63 @@ def gpu_comparison_chart():
         
         return jsonify({
             'image': img_base64,
-            'stats': gpu_stats.to_dict()
+            'stats': gpu_efficiency.to_dict(),
+            'sample_count': len(similar_models),
+            'param_range': '70M-130M parameters'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/visualizations/model_size_impact', methods=['GET'])
+def model_size_impact_chart():
+    """Generate model size impact comparison"""
+    try:
+        # Create model size categories
+        dataset_copy = dataset.copy()
+        dataset_copy['Model_Size_Category'] = pd.cut(
+            dataset_copy['Model_Parameters'], 
+            bins=[0, 50e6, 100e6, 200e6, float('inf')],
+            labels=['Small (<50M)', 'Medium (50-100M)', 'Large (100-200M)', 'Huge (>200M)']
+        )
+        
+        size_stats = dataset_copy.groupby('Model_Size_Category').agg({
+            'CO2_kg': 'mean',
+            'Energy_kWh': 'mean',
+            'Training_Hours': 'mean',
+            'Model_Parameters': 'mean'
+        }).round(3)
+        
+        # Create subplot
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+        
+        # CO2 impact by model size
+        size_stats['CO2_kg'].plot(kind='bar', ax=ax1, color='skyblue')
+        ax1.set_title('Model Size Impact: CO2 Emissions')
+        ax1.set_ylabel('CO2 (kg)')
+        ax1.tick_params(axis='x', rotation=45)
+        
+        # Energy consumption by model size
+        size_stats['Energy_kWh'].plot(kind='bar', ax=ax2, color='orange')
+        ax2.set_title('Model Size Impact: Energy Consumption')
+        ax2.set_ylabel('Energy (kWh)')
+        ax2.tick_params(axis='x', rotation=45)
+        
+        plt.tight_layout()
+        
+        # Convert to base64
+        img_buffer = io.BytesIO()
+        plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+        img_buffer.seek(0)
+        img_base64 = base64.b64encode(img_buffer.getvalue()).decode()
+        
+        # Proper cleanup
+        plt.close('all')
+        img_buffer.close()
+        
+        return jsonify({
+            'image': img_base64,
+            'stats': size_stats.to_dict()
         })
         
     except Exception as e:
@@ -237,26 +300,27 @@ def get_prediction_scenarios():
         # Define scenarios with proper GPU encoding
         gpu_encodings = {gpu: idx for idx, gpu in enumerate(label_encoder.classes_)}
         
+        # Model size comparison scenarios (using optimal GPU for each size)
         scenarios = {
-            'Small Model - CPU': {
-                'base_params': [50000000, gpu_encodings['CPU'], 2.0, 1000, 0.13],
-                'description': 'Small model on CPU'
+            'Small Model (50M)': {
+                'base_params': [50000000, gpu_encodings['RTX 3060'], 2.0, 1000, 0.85],
+                'description': 'Small 50M parameter model'
             },
-            'Medium Model - RTX 3060': {
-                'base_params': [100000000, gpu_encodings['RTX 3060'], 5.0, 2500, 0.85],
-                'description': 'Medium model on RTX 3060'
+            'Medium Model (100M)': {
+                'base_params': [100000000, gpu_encodings['RTX 4090'], 4.0, 2500, 1.8],
+                'description': 'Medium 100M parameter model'
             },
-            'Large Model - RTX 4090': {
-                'base_params': [175000000, gpu_encodings['RTX 4090'], 8.0, 4000, 3.6],
-                'description': 'Large model on RTX 4090'
-            },
-            'Large Model - A100': {
+            'Large Model (175M)': {
                 'base_params': [175000000, gpu_encodings['A100'], 6.0, 4000, 2.4],
-                'description': 'Large model on A100'
+                'description': 'Large 175M parameter model'
             },
-            'Huge Model - A100': {
+            'Huge Model (300M)': {
                 'base_params': [300000000, gpu_encodings['A100'], 12.0, 5000, 4.8],
-                'description': 'Huge model on A100'
+                'description': 'Huge 300M parameter model'
+            },
+            'Massive Model (500M)': {
+                'base_params': [500000000, gpu_encodings['A100'], 20.0, 6000, 8.0],
+                'description': 'Massive 500M parameter model'
             }
         }
         
@@ -283,6 +347,66 @@ def get_prediction_scenarios():
         return jsonify({
             'scenarios': results,
             'model_used': best_model_name
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/gpu_hardware_comparison', methods=['GET'])
+def get_gpu_hardware_comparison():
+    """Compare different GPUs training the same model size"""
+    try:
+        # Use best model
+        best_model_name = max(models.keys(), key=lambda x: models[x]['r2'])
+        model = models[best_model_name]['model']
+        
+        # Define GPU encodings
+        gpu_encodings = {gpu: idx for idx, gpu in enumerate(label_encoder.classes_)}
+        
+        # Same model (100M params) on different GPUs
+        base_model_params = 100000000
+        base_dataset_size = 2500
+        base_training_hours = 5.0
+        
+        # GPU-specific energy consumption (realistic values)
+        gpu_scenarios = {
+            'CPU': {'energy': 0.325, 'hours': 15.0},  # Slower, less energy per hour
+            'RTX 3060': {'energy': 0.85, 'hours': 8.0},
+            'RTX 4090': {'energy': 2.25, 'hours': 3.5},
+            'A100': {'energy': 2.0, 'hours': 3.0}  # Most efficient
+        }
+        
+        results = {}
+        for gpu_name, specs in gpu_scenarios.items():
+            if gpu_name not in gpu_encodings:
+                continue
+                
+            gpu_encoded = gpu_encodings[gpu_name]
+            energy_kwh = specs['energy']
+            training_hours = specs['hours']
+            
+            # Calculate engineered features
+            params_per_hour = base_model_params / (training_hours + 0.1)
+            energy_per_param = energy_kwh / (base_model_params / 1e6 + 0.1)
+            gpu_power_factor = gpu_encoded * energy_kwh
+            
+            features = [[
+                base_model_params, gpu_encoded, training_hours, base_dataset_size, energy_kwh,
+                params_per_hour, energy_per_param, gpu_power_factor
+            ]]
+            
+            prediction = float(model.predict(features)[0])
+            results[gpu_name] = {
+                'prediction': prediction,
+                'energy_kwh': energy_kwh,
+                'training_hours': training_hours,
+                'efficiency_score': prediction / training_hours  # CO2 per hour
+            }
+        
+        return jsonify({
+            'gpu_comparison': results,
+            'model_used': best_model_name,
+            'model_size': '100M parameters'
         })
         
     except Exception as e:
@@ -315,8 +439,10 @@ if __name__ == '__main__':
         print("  - GET  /api/models - Model information")
         print("  - POST /api/predict - Make predictions")
         print("  - GET  /api/dataset/stats - Dataset statistics")
-        print("  - GET  /api/visualizations/gpu_comparison - GPU comparison chart")
-        print("  - GET  /api/scenarios - Prediction scenarios")
+        print("  - GET  /api/visualizations/gpu_efficiency - GPU efficiency comparison")
+        print("  - GET  /api/visualizations/model_size_impact - Model size impact")
+        print("  - GET  /api/scenarios - Model size scenarios")
+        print("  - GET  /api/gpu_hardware_comparison - GPU hardware comparison")
         print("  - GET  /api/dataset/sample - Dataset sample")
         
         app.run(debug=True, host='0.0.0.0', port=5000)

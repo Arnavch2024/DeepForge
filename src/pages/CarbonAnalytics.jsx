@@ -9,6 +9,8 @@ const CarbonAnalytics = () => {
   const [data, setData] = useState({
     stats: null,
     scenarios: null,
+    gpuEfficiency: null,
+    modelSizeImpact: null,
     gpuComparison: null,
     models: null
   });
@@ -40,31 +42,35 @@ const CarbonAnalytics = () => {
         throw new Error('Carbon Impact API is not available. Please make sure the backend server is running on port 5000.');
       }
       
-      const [statsRes, scenariosRes, gpuRes, modelsRes] = await Promise.all([
+      const [statsRes, scenariosRes, gpuEffRes, modelSizeRes, gpuCompRes, modelsRes] = await Promise.all([
         fetch('http://localhost:5000/api/dataset/stats'),
         fetch('http://localhost:5000/api/scenarios'),
-        fetch('http://localhost:5000/api/visualizations/gpu_comparison'),
+        fetch('http://localhost:5000/api/visualizations/gpu_efficiency'),
+        fetch('http://localhost:5000/api/visualizations/model_size_impact'),
+        fetch('http://localhost:5000/api/gpu_hardware_comparison'),
         fetch('http://localhost:5000/api/models')
       ]);
       
       // Check if all responses are ok
-      if (!statsRes.ok || !scenariosRes.ok || !gpuRes.ok || !modelsRes.ok) {
+      if (!statsRes.ok || !scenariosRes.ok || !gpuEffRes.ok || !modelSizeRes.ok || !gpuCompRes.ok || !modelsRes.ok) {
         throw new Error('Failed to load carbon impact data. Please check if the backend API is running properly.');
       }
       
-      const [stats, scenarios, gpuComparison, models] = await Promise.all([
+      const [stats, scenarios, gpuEfficiency, modelSizeImpact, gpuComparison, models] = await Promise.all([
         statsRes.json(),
         scenariosRes.json(),
-        gpuRes.json(),
+        gpuEffRes.json(),
+        modelSizeRes.json(),
+        gpuCompRes.json(),
         modelsRes.json()
       ]);
       
       // Check for API errors in responses
-      if (stats.error || scenarios.error || gpuComparison.error || models.error) {
-        throw new Error(stats.error || scenarios.error || gpuComparison.error || models.error);
+      if (stats.error || scenarios.error || gpuEfficiency.error || modelSizeImpact.error || gpuComparison.error || models.error) {
+        throw new Error(stats.error || scenarios.error || gpuEfficiency.error || modelSizeImpact.error || gpuComparison.error || models.error);
       }
       
-      setData({ stats, scenarios, gpuComparison, models });
+      setData({ stats, scenarios, gpuEfficiency, modelSizeImpact, gpuComparison, models });
     } catch (err) {
       console.error('Carbon Analytics Error:', err);
       setError(err.message || 'Failed to load carbon impact data');
@@ -158,18 +164,31 @@ const CarbonAnalytics = () => {
     );
   }
 
-  const { stats, scenarios, gpuComparison, models } = data;
+  const { stats, scenarios, gpuEfficiency, modelSizeImpact, gpuComparison, models } = data;
 
   // Transform data for charts
   const scenarioData = scenarios ? Object.entries(scenarios.scenarios).map(([name, data]) => ({
-    name: name.split(' - ')[0],
+    name: name.replace(' Model', '').replace('(', '').replace(')', ''),
     co2: parseFloat(data.prediction.toFixed(2))
   })) : [];
 
-  const gpuData = gpuComparison ? Object.entries(gpuComparison.stats.CO2_kg).map(([gpu, co2]) => ({
+  const gpuEfficiencyData = gpuEfficiency ? Object.entries(gpuEfficiency.stats.CO2_kg).map(([gpu, co2]) => ({
     gpu,
     co2: parseFloat(co2.toFixed(2)),
-    energy: parseFloat(gpuComparison.stats.Energy_kWh[gpu].toFixed(2))
+    energy: parseFloat(gpuEfficiency.stats.Energy_kWh[gpu].toFixed(2))
+  })) : [];
+
+  const modelSizeData = modelSizeImpact ? Object.entries(modelSizeImpact.stats.CO2_kg).map(([size, co2]) => ({
+    size,
+    co2: parseFloat(co2.toFixed(2)),
+    energy: parseFloat(modelSizeImpact.stats.Energy_kWh[size].toFixed(2))
+  })) : [];
+
+  const gpuHardwareData = gpuComparison ? Object.entries(gpuComparison.gpu_comparison).map(([gpu, data]) => ({
+    gpu,
+    co2: parseFloat(data.prediction.toFixed(2)),
+    energy: parseFloat(data.energy_kwh.toFixed(2)),
+    hours: parseFloat(data.training_hours.toFixed(1))
   })) : [];
 
   return (
@@ -435,7 +454,7 @@ const CarbonAnalytics = () => {
           )}
         </div>
 
-        {/* GPU Efficiency */}
+        {/* Model Size Impact */}
         <div className="hub-card" style={{ padding: '2rem' }}>
           <h3 style={{ 
             fontSize: '1.5rem', 
@@ -445,14 +464,17 @@ const CarbonAnalytics = () => {
             alignItems: 'center',
             gap: '0.5rem'
           }}>
-            🖥️ GPU Efficiency Ranking
+            📊 Model Size Impact
           </h3>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+            How model complexity affects carbon emissions
+          </p>
           
-          {gpuData.length > 0 && (
+          {modelSizeData.length > 0 && (
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={gpuData}>
+              <BarChart data={modelSizeData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="gpu" fontSize={12} />
+                <XAxis dataKey="size" fontSize={12} />
                 <YAxis fontSize={12} />
                 <Tooltip formatter={(value) => [`${value} kg`, 'CO₂ Emissions']} />
                 <Bar dataKey="co2" fill="var(--primary-color)" radius={[4, 4, 0, 0]} />
@@ -462,7 +484,7 @@ const CarbonAnalytics = () => {
         </div>
       </div>
 
-      {/* Scenarios Comparison */}
+      {/* Model Size Scenarios Comparison */}
       {scenarioData.length > 0 && (
         <div className="hub-card" style={{ padding: '2rem', marginBottom: '2rem' }}>
           <h3 style={{ 
@@ -473,8 +495,11 @@ const CarbonAnalytics = () => {
             alignItems: 'center',
             gap: '0.5rem'
           }}>
-            📈 Training Scenarios Comparison
+            📈 Model Size Scenarios
           </h3>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+            CO₂ impact of different model sizes (using optimal GPU for each)
+          </p>
           
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={scenarioData}>
@@ -487,6 +512,72 @@ const CarbonAnalytics = () => {
           </ResponsiveContainer>
         </div>
       )}
+
+      {/* GPU Comparisons Grid */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', 
+        gap: '2rem', 
+        marginBottom: '2rem' 
+      }}>
+        {/* GPU Efficiency (Same Workload) */}
+        <div className="hub-card" style={{ padding: '2rem' }}>
+          <h3 style={{ 
+            fontSize: '1.5rem', 
+            fontWeight: 'bold', 
+            marginBottom: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            🖥️ GPU Efficiency
+          </h3>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+            Same model size (~100M params) on different GPUs
+          </p>
+          
+          {gpuEfficiencyData.length > 0 && (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={gpuEfficiencyData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="gpu" fontSize={12} />
+                <YAxis fontSize={12} />
+                <Tooltip formatter={(value) => [`${value} kg`, 'CO₂ Emissions']} />
+                <Bar dataKey="co2" fill="#10b981" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* GPU Hardware Comparison */}
+        <div className="hub-card" style={{ padding: '2rem' }}>
+          <h3 style={{ 
+            fontSize: '1.5rem', 
+            fontWeight: 'bold', 
+            marginBottom: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            ⚡ Hardware Performance
+          </h3>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+            100M parameter model on different hardware
+          </p>
+          
+          {gpuHardwareData.length > 0 && (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={gpuHardwareData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="gpu" fontSize={12} />
+                <YAxis fontSize={12} />
+                <Tooltip formatter={(value) => [`${value} kg`, 'CO₂ Emissions']} />
+                <Bar dataKey="co2" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
 
       {/* Environmental Impact Summary */}
       {stats && (
