@@ -90,6 +90,11 @@ const Navbar = () => {
             </Link>
           </li>
           <li>
+            <Link className="nav-link" to="/carbon-analytics">
+              🌱 Carbon Analytics
+            </Link>
+          </li>
+          <li>
             <Link className="nav-link" to="/subscriptions">Subscriptions</Link>
           </li>
           {me && (

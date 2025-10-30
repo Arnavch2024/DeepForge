@@ -1,0 +1,63 @@
+{
+  "training_date": "2025-10-29T19:29:22.765673",
+  "dataset_shape": [
+    500,
+    10
+  ],
+  "gpu_types": [
+    "A100",
+    "CPU",
+    "RTX 3050",
+    "RTX 3060",
+    "RTX 4050",
+    "RTX 4090",
+    "TPU"
+  ],
+  "feature_names": [
+    "Model_Parameters",
+    "GPU_Type_Encoded",
+    "Training_Hours",
+    "Dataset_Size_MB",
+    "Energy_kWh",
+    "Params_per_Hour",
+    "Energy_per_Param",
+    "GPU_Power_Factor"
+  ],
+  "gpu_carbon_stats": {
+    "mean": {
+      "A100": 3.7535,
+      "CPU": 0.7978,
+      "RTX 3050": 1.3751,
+      "RTX 3060": 1.7022,
+      "RTX 4050": 0.9311,
+      "RTX 4090": 5.1998,
+      "TPU": 0.8376
+    },
+    "std": {
+      "A100": 2.3383,
+      "CPU": 0.4422,
+      "RTX 3050": 0.7496,
+      "RTX 3060": 1.0721,
+      "RTX 4050": 0.539,
+      "RTX 4090": 3.0879,
+      "TPU": 0.4268
+    }
+  },
+  "models": {
+    "Random Forest": {
+      "mse": 0.07098776347563286,
+      "r2": 0.9859083361000757,
+      "filename": "random_forest_carbon_model.pkl"
+    },
+    "Linear Regression": {
+      "mse": 0.46953811591275046,
+      "r2": 0.9067927626721557,
+      "filename": "linear_regression_carbon_model.pkl"
+    },
+    "Enhanced Random Forest": {
+      "mse": 0.06894651309318874,
+      "r2": 0.9863135413483699,
+      "filename": "enhanced_random_forest_carbon_model.pkl"
+    }
+  }
+}
